@@ -1,0 +1,25 @@
+<resources>
+    <string name="app_name">ScannerApp</string>
+    <string name="exit_app_title">Exit App</string>
+    <string name="exit_app_message">Are you sure you want to exit the application?</string>
+    <string name="exit_button">Exit</string>
+    <string name="cancel_button">Cancel</string>
+    <string name="home_screen_title">Scanner App</string>
+    <string name="history_screen_title">History</string>
+    <string name="details_screen_title">Document Details</string>
+    <string name="home_nav_label">Home</string>
+    <string name="history_nav_label">History</string>
+    <string name="scan_document_button">Scan Document</string>
+    <string name="share_images_desc">Share Images</string>
+    <string name="share_pdf_desc">Share PDF</string>
+    <string name="print_pdf_desc">Print PDF</string>
+    <string name="save_document_desc">Save Document</string>
+    <string name="saved_to_history_toast">Saved to History</string>
+    <string name="no_saved_documents">No saved documents</string>
+    <string name="delete_desc">Delete</string>
+    <string name="back_desc">Back</string>
+    <string name="delete_confirm_title">Delete Document</string>
+    <string name="delete_confirm_message">Are you sure you want to delete this document?</string>
+    <string name="never_ask_again">Never ask again</string>
+    <string name="delete_button">Delete</string>
+</resources>

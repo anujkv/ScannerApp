@@ -240,8 +240,15 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val textRecognizer = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
-                
+
                 DisposableEffect(Unit) {
+                    val listener = object : android.speech.tts.UtteranceProgressListener() {
+                        override fun onStart(utteranceId: String?) {}
+                        override fun onDone(utteranceId: String?) { isSpeaking = false }
+                        @Deprecated("Deprecated in Java")
+                        override fun onError(utteranceId: String?) { isSpeaking = false }
+                    }
+                    tts?.setOnUtteranceProgressListener(listener)
                     onDispose {
                         tts?.stop()
                         tts?.shutdown()

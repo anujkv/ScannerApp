@@ -103,6 +103,10 @@ import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.TextField
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
+import androidx.compose.ui.graphics.graphicsLayer
 
 class MainActivity : ComponentActivity() {
     private val TAG = "ScannerApp_Main"
@@ -821,7 +825,31 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                var scale by remember { mutableStateOf(1f) }
+                var offset by remember { mutableStateOf(Offset.Zero) }
+                val state = rememberTransformableState { zoomChange, offsetChange, _ ->
+                    scale = (scale * zoomChange).coerceIn(1f, 5f)
+                    val newOffset = offset + offsetChange
+                    // Only allow panning if zoomed in
+                    if (scale > 1f) {
+                        offset = newOffset
+                    } else {
+                        offset = Offset.Zero
+                    }
+                }
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .graphicsLayer(
+                            scaleX = scale,
+                            scaleY = scale,
+                            translationX = offset.x,
+                            translationY = offset.y
+                        )
+                        .transformable(state = state)
+                ) {
                     items(scannedUris) { uri ->
                         AsyncImage(
                             model = uri,
@@ -1045,7 +1073,30 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+            var scale by remember { mutableStateOf(1f) }
+            var offset by remember { mutableStateOf(Offset.Zero) }
+            val state = rememberTransformableState { zoomChange, offsetChange, _ ->
+                scale = (scale * zoomChange).coerceIn(1f, 5f)
+                val newOffset = offset + offsetChange
+                if (scale > 1f) {
+                    offset = newOffset
+                } else {
+                    offset = Offset.Zero
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale,
+                        translationX = offset.x,
+                        translationY = offset.y
+                    )
+                    .transformable(state = state)
+            ) {
                 items(imageUris) { uri ->
                     AsyncImage(
                         model = uri,

@@ -62,6 +62,11 @@ import androidx.core.content.FileProvider
 import java.io.File
 import coil.compose.AsyncImage
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.mutableLongStateOf
@@ -725,106 +730,6 @@ class MainActivity : ComponentActivity() {
             }
 
             if (scannedUris.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = { onShareImages(scannedUris) }) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_share_image),
-                            contentDescription = stringResource(R.string.share_images_desc),
-                            modifier = Modifier.size(40.dp),
-                            tint = Color.Unspecified
-                        )
-                    }
-                    pdfUri?.let { uri ->
-                        IconButton(onClick = { onSharePdf(uri) }) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_share_pdf),
-                                contentDescription = stringResource(R.string.share_pdf_desc),
-                                modifier = Modifier.size(40.dp),
-                                tint = Color.Unspecified
-                            )
-                        }
-                        IconButton(onClick = { onPrintPdf(uri) }) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_printer),
-                                contentDescription = stringResource(R.string.print_pdf_desc),
-                                modifier = Modifier.size(40.dp),
-                                tint = Color.Unspecified
-                            )
-                        }
-                    }
-                    IconButton(onClick = onSpeakClick) {
-                        Icon(
-                            painter = painterResource(id = if (isSpeaking) R.drawable.ic_stop else R.drawable.ic_speaker),
-                            contentDescription = stringResource(R.string.speak_desc),
-                            modifier = Modifier.size(40.dp),
-                            tint = Color.Unspecified
-                        )
-                    }
-                    IconButton(onClick = onViewTextClick) {
-                        Icon(
-                            Icons.Filled.ContentCopy,
-                            contentDescription = stringResource(R.string.view_text_desc),
-                            modifier = Modifier.size(40.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    IconButton(onClick = onAiEditClick) {
-                        if (isAiProcessing || isListening) {
-                            CircularProgressIndicator(modifier = Modifier.size(28.dp), color = if (isListening) Color.Red else MaterialTheme.colorScheme.primary)
-                        } else {
-                            Icon(
-                                Icons.Default.AutoFixHigh,
-                                contentDescription = stringResource(R.string.ai_edit_desc),
-                                modifier = Modifier.size(40.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                    IconButton(onClick = onAiVisualScanClick) {
-                        if (isAiProcessing) {
-                            CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                        } else {
-                            Icon(
-                                Icons.Default.AutoAwesome,
-                                contentDescription = stringResource(R.string.ai_visual_scan_desc),
-                                modifier = Modifier.size(40.dp),
-                                tint = Color(0xFF673AB7) // Deep Purple
-                            )
-                        }
-                    }
-                    IconButton(onClick = onCompressClick) {
-                        if (isCompressing) {
-                            CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                        } else {
-                            Icon(
-                                Icons.Default.Compress,
-                                contentDescription = "Compress",
-                                modifier = Modifier.size(40.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onSaveClick) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_save),
-                            contentDescription = stringResource(R.string.save_document_desc),
-                            modifier = Modifier.size(40.dp),
-                            tint = Color.Unspecified
-                        )
-                    }
-                }
-
                 var scale by remember { mutableStateOf(1f) }
                 var offset by remember { mutableStateOf(Offset.Zero) }
                 val state = rememberTransformableState { zoomChange, offsetChange, _ ->
@@ -835,6 +740,114 @@ class MainActivity : ComponentActivity() {
                         offset = newOffset
                     } else {
                         offset = Offset.Zero
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = scale <= 1.1f,
+                    enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut()
+                ) {
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = { onShareImages(scannedUris) }) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_share_image),
+                                    contentDescription = stringResource(R.string.share_images_desc),
+                                    modifier = Modifier.size(40.dp),
+                                    tint = Color.Unspecified
+                                )
+                            }
+                            pdfUri?.let { uri ->
+                                IconButton(onClick = { onSharePdf(uri) }) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_share_pdf),
+                                        contentDescription = stringResource(R.string.share_pdf_desc),
+                                        modifier = Modifier.size(40.dp),
+                                        tint = Color.Unspecified
+                                    )
+                                }
+                                IconButton(onClick = { onPrintPdf(uri) }) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_printer),
+                                        contentDescription = stringResource(R.string.print_pdf_desc),
+                                        modifier = Modifier.size(40.dp),
+                                        tint = Color.Unspecified
+                                    )
+                                }
+                            }
+                            IconButton(onClick = onSpeakClick) {
+                                Icon(
+                                    painter = painterResource(id = if (isSpeaking) R.drawable.ic_stop else R.drawable.ic_speaker),
+                                    contentDescription = stringResource(R.string.speak_desc),
+                                    modifier = Modifier.size(40.dp),
+                                    tint = Color.Unspecified
+                                )
+                            }
+                            IconButton(onClick = onViewTextClick) {
+                                Icon(
+                                    Icons.Filled.ContentCopy,
+                                    contentDescription = stringResource(R.string.view_text_desc),
+                                    modifier = Modifier.size(40.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            IconButton(onClick = onAiEditClick) {
+                                if (isAiProcessing || isListening) {
+                                    CircularProgressIndicator(modifier = Modifier.size(28.dp), color = if (isListening) Color.Red else MaterialTheme.colorScheme.primary)
+                                } else {
+                                    Icon(
+                                        Icons.Default.AutoFixHigh,
+                                        contentDescription = stringResource(R.string.ai_edit_desc),
+                                        modifier = Modifier.size(40.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            IconButton(onClick = onAiVisualScanClick) {
+                                if (isAiProcessing) {
+                                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                } else {
+                                    Icon(
+                                        Icons.Default.AutoAwesome,
+                                        contentDescription = stringResource(R.string.ai_visual_scan_desc),
+                                        modifier = Modifier.size(40.dp),
+                                        tint = Color(0xFF673AB7) // Deep Purple
+                                    )
+                                }
+                            }
+                            IconButton(onClick = onCompressClick) {
+                                if (isCompressing) {
+                                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                } else {
+                                    Icon(
+                                        Icons.Default.Compress,
+                                        contentDescription = "Compress",
+                                        modifier = Modifier.size(40.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = onSaveClick) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_save),
+                                    contentDescription = stringResource(R.string.save_document_desc),
+                                    modifier = Modifier.size(40.dp),
+                                    tint = Color.Unspecified
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -942,6 +955,18 @@ class MainActivity : ComponentActivity() {
         val imageUris = remember(document) { document.imageUris.split(",").filter { it.isNotEmpty() }.map { Uri.parse(it) } }
         val pdfUri = remember(document) { document.pdfUri?.let { Uri.parse(it) } }
 
+        var scale by remember { mutableStateOf(1f) }
+        var offset by remember { mutableStateOf(Offset.Zero) }
+        val state = rememberTransformableState { zoomChange, offsetChange, _ ->
+            scale = (scale * zoomChange).coerceIn(1f, 5f)
+            val newOffset = offset + offsetChange
+            if (scale > 1f) {
+                offset = newOffset
+            } else {
+                offset = Offset.Zero
+            }
+        }
+
         Column(modifier = modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
             if (aiEditedText != null) {
                 Card(
@@ -973,115 +998,112 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
+            
+            AnimatedVisibility(
+                visible = scale <= 1.1f,
+                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut()
             ) {
-                IconButton(onClick = { onShareImages(imageUris) }) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_share_image),
-                        contentDescription = stringResource(R.string.share_images_desc),
-                        modifier = Modifier.size(40.dp),
-                        tint = androidx.compose.ui.graphics.Color.Unspecified
-                    )
-                }
-                pdfUri?.let { uri ->
-                    IconButton(onClick = { onSharePdf(uri) }) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_share_pdf),
-                            contentDescription = stringResource(R.string.share_pdf_desc),
-                            modifier = Modifier.size(40.dp),
-                            tint = androidx.compose.ui.graphics.Color.Unspecified
-                        )
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { onShareImages(imageUris) }) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_share_image),
+                                contentDescription = stringResource(R.string.share_images_desc),
+                                modifier = Modifier.size(40.dp),
+                                tint = androidx.compose.ui.graphics.Color.Unspecified
+                            )
+                        }
+                        pdfUri?.let { uri ->
+                            IconButton(onClick = { onSharePdf(uri) }) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_share_pdf),
+                                    contentDescription = stringResource(R.string.share_pdf_desc),
+                                    modifier = Modifier.size(40.dp),
+                                    tint = androidx.compose.ui.graphics.Color.Unspecified
+                                )
+                            }
+                            IconButton(onClick = { onPrintPdf(uri) }) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_printer),
+                                    contentDescription = stringResource(R.string.print_pdf_desc),
+                                    modifier = Modifier.size(40.dp),
+                                    tint = androidx.compose.ui.graphics.Color.Unspecified
+                                )
+                            }
+                        }
+                        IconButton(onClick = { onSpeakClick(imageUris) }) {
+                            Icon(
+                                painter = painterResource(id = if (isSpeaking) R.drawable.ic_stop else R.drawable.ic_speaker),
+                                contentDescription = stringResource(R.string.speak_desc),
+                                modifier = Modifier.size(40.dp),
+                                tint = Color.Unspecified
+                            )
+                        }
+                        IconButton(onClick = { onViewTextClick(imageUris) }) {
+                            Icon(
+                                Icons.Filled.ContentCopy,
+                                contentDescription = stringResource(R.string.view_text_desc),
+                                modifier = Modifier.size(40.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        IconButton(onClick = { onAiEditClick(imageUris) }) {
+                            if (isAiProcessing || isListening) {
+                                CircularProgressIndicator(modifier = Modifier.size(28.dp), color = if (isListening) Color.Red else MaterialTheme.colorScheme.primary)
+                            } else {
+                                Icon(
+                                    Icons.Default.AutoFixHigh,
+                                    contentDescription = stringResource(R.string.ai_edit_desc),
+                                    modifier = Modifier.size(40.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        IconButton(onClick = { onAiVisualScanClick(imageUris) }) {
+                            if (isAiProcessing) {
+                                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                            } else {
+                                Icon(
+                                    Icons.Default.AutoAwesome,
+                                    contentDescription = stringResource(R.string.ai_visual_scan_desc),
+                                    modifier = Modifier.size(40.dp),
+                                    tint = Color(0xFF673AB7)
+                                )
+                            }
+                        }
+                        IconButton(onClick = { onCompressClick(imageUris) }) {
+                            if (isCompressing) {
+                                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                            } else {
+                                Icon(
+                                    Icons.Default.Compress,
+                                    contentDescription = "Compress",
+                                    modifier = Modifier.size(40.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
-                    IconButton(onClick = { onPrintPdf(uri) }) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_printer),
-                            contentDescription = stringResource(R.string.print_pdf_desc),
-                            modifier = Modifier.size(40.dp),
-                            tint = androidx.compose.ui.graphics.Color.Unspecified
-                        )
-                    }
-                }
-                IconButton(onClick = { onSpeakClick(imageUris) }) {
-                    Icon(
-                        painter = painterResource(id = if (isSpeaking) R.drawable.ic_stop else R.drawable.ic_speaker),
-                        contentDescription = stringResource(R.string.speak_desc),
-                        modifier = Modifier.size(40.dp),
-                        tint = Color.Unspecified
-                    )
-                }
-                IconButton(onClick = { onViewTextClick(imageUris) }) {
-                    Icon(
-                        Icons.Filled.ContentCopy,
-                        contentDescription = stringResource(R.string.view_text_desc),
-                        modifier = Modifier.size(40.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-                IconButton(onClick = { onAiEditClick(imageUris) }) {
-                    if (isAiProcessing || isListening) {
-                        CircularProgressIndicator(modifier = Modifier.size(28.dp), color = if (isListening) Color.Red else MaterialTheme.colorScheme.primary)
-                    } else {
-                        Icon(
-                            Icons.Default.AutoFixHigh,
-                            contentDescription = stringResource(R.string.ai_edit_desc),
-                            modifier = Modifier.size(40.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-                IconButton(onClick = { onAiVisualScanClick(imageUris) }) {
-                    if (isAiProcessing) {
-                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                    } else {
-                        Icon(
-                            Icons.Default.AutoAwesome,
-                            contentDescription = stringResource(R.string.ai_visual_scan_desc),
-                            modifier = Modifier.size(40.dp),
-                            tint = Color(0xFF673AB7)
-                        )
-                    }
-                }
-                IconButton(onClick = { onCompressClick(imageUris) }) {
-                    if (isCompressing) {
-                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                    } else {
-                        Icon(
-                            Icons.Default.Compress,
-                            contentDescription = "Compress",
-                            modifier = Modifier.size(40.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
 
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { onSaveClick(aiEditedText) }) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_save),
-                        contentDescription = stringResource(R.string.save_document_desc),
-                        modifier = Modifier.size(40.dp),
-                        tint = androidx.compose.ui.graphics.Color.Unspecified
-                    )
-                }
-            }
-
-            var scale by remember { mutableStateOf(1f) }
-            var offset by remember { mutableStateOf(Offset.Zero) }
-            val state = rememberTransformableState { zoomChange, offsetChange, _ ->
-                scale = (scale * zoomChange).coerceIn(1f, 5f)
-                val newOffset = offset + offsetChange
-                if (scale > 1f) {
-                    offset = newOffset
-                } else {
-                    offset = Offset.Zero
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { onSaveClick(aiEditedText) }) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_save),
+                                contentDescription = stringResource(R.string.save_document_desc),
+                                modifier = Modifier.size(40.dp),
+                                tint = androidx.compose.ui.graphics.Color.Unspecified
+                            )
+                        }
+                    }
                 }
             }
 

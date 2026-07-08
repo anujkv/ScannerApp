@@ -5,6 +5,8 @@ A simple and efficient Android application for scanning documents using Google M
 ## Features
 
 - **Document Scanning**: High-quality document scanning with automatic edge detection and perspective correction.
+- **Global Multi-Page Zoom**: Smooth pinch-to-zoom and panning across the entire document session for detailed inspection.
+- **Animated Contextual UI**: Action buttons automatically animate and hide during zoom to provide a distraction-free, full-screen viewing experience.
 - **AI-Powered Text Extraction**: Extract text from images using Google's Gemini AI, including support for handwritten text.
 - **Voice Commands**: Apply AI edits and formatting to extracted text using natural language voice commands.
 - **Text-to-Speech (TTS)**: Read extracted text aloud for accessibility and convenience.

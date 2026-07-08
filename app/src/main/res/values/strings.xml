@@ -22,4 +22,19 @@
     <string name="delete_confirm_message">Are you sure you want to delete this document?</string>
     <string name="never_ask_again">Never ask again</string>
     <string name="delete_button">Delete</string>
+    <string name="speak_desc">Listen to text</string>
+    <string name="extracting_text">Extracting text...</string>
+    <string name="no_text_found">No text found in images</string>
+    <string name="reading_aloud">Reading document aloud</string>
+    <string name="stop_reading">Stop reading</string>
+    <string name="ai_edit_desc">AI Edit (Voice)</string>
+    <string name="listening_for_command">Listening for edit command...</string>
+    <string name="ai_processing">AI is processing...</string>
+    <string name="ai_edit_error">AI Edit failed</string>
+    <string name="voice_not_recognized">Voice command not recognized</string>
+    <string name="copy_text_desc">Copy extracted text</string>
+    <string name="text_copied_toast">Text copied to clipboard</string>
+    <string name="ai_visual_scan_desc">AI Visual Scan (Handwriting)</string>
+    <string name="view_text_desc">View extracted text</string>
+    <string name="extracted_text_title">Extracted Text</string>
 </resources>

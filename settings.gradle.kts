@@ -24,4 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "ScannerApp"
 include(":app")
- 
+include(":compose_practice")

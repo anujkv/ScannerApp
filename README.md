@@ -5,6 +5,11 @@ A simple and efficient Android application for scanning documents using Google M
 ## Features
 
 - **Document Scanning**: High-quality document scanning with automatic edge detection and perspective correction.
+- **AI-Powered Text Extraction**: Extract text from images using Google's Gemini AI, including support for handwritten text.
+- **Voice Commands**: Apply AI edits and formatting to extracted text using natural language voice commands.
+- **Text-to-Speech (TTS)**: Read extracted text aloud for accessibility and convenience.
+- **Image Compression**: Reduce document size with built-in compression to save storage space.
+- **File Size Tracking**: View the total size of your scanned documents directly in the history list.
 - **Document History**: Save and manage your scanned documents with persistent storage.
 - **Multiple Formats**: Support for both JPEG (images) and PDF output.
 - **Multi-page Scanning**: Scan multiple pages into a single session.
@@ -18,7 +23,10 @@ A simple and efficient Android application for scanning documents using Google M
 
 - **Kotlin**: Primary programming language.
 - **Jetpack Compose**: Modern UI toolkit for building the native interface.
+- **Google Gemini AI**: Integration via Generative AI SDK for advanced text extraction and processing.
 - **ML Kit Document Scanner**: Google's powerful document scanning library.
+- **ML Kit Text Recognition**: For on-device OCR capabilities.
+- **Speech Services**: Android Speech-to-Text (RecognizerIntent) and Text-to-Speech (TTS) integration.
 - **Room Persistence Library**: Local database for saving document history and metadata.
 - **Coil**: Image loading library for Compose.
 - **Android Print Framework**: For document printing capabilities.

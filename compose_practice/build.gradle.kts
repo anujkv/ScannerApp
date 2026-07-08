@@ -1,15 +1,16 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.kotlin.symbol.processing)
 }
 
 android {
-    namespace = "com.a3solution.scannerapp"
-    compileSdk = 37
+    namespace = "com.a3solution.compose_practice"
+    compileSdk {
+        version = release(37)
+    }
 
     defaultConfig {
-        applicationId = "com.a3solution.scannerapp"
+        applicationId = "com.a3solution.compose_practice"
         minSdk = 24
         targetSdk = 37
         versionCode = 1
@@ -45,16 +46,8 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.mlkit.scanner)
-    implementation(libs.mlkit.text.recognition)
-    implementation(libs.coil.compose)
-    implementation(libs.androidx.print)
-    implementation(libs.androidx.material.icons.extended)
-    implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
-    implementation(libs.kotlinx.coroutines.play.services)
-    implementation(libs.google.ai.client)
-    ksp(libs.androidx.room.compiler)
+    implementation(libs.androidx.fragment.ktx)
+    implementation(libs.androidx.appcompat)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

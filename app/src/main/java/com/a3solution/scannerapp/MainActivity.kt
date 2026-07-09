@@ -78,7 +78,6 @@ import com.a3solution.scannerapp.data.ScannedDocument
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import java.util.Date
 import java.text.SimpleDateFormat
@@ -97,6 +96,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.RecognitionListener
+import android.content.BroadcastReceiver
 import android.content.ClipboardManager
 import android.content.ClipData
 import android.graphics.BitmapFactory
@@ -105,6 +105,7 @@ import android.graphics.Paint
 import android.graphics.Color as AndroidColor
 import androidx.compose.material.icons.automirrored.filled.BrandingWatermark
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.tasks.await
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.RequestOptions
@@ -118,6 +119,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.flow.collectLatest
 import com.a3solution.scannerapp.service.ScannerTTSService
 
 class MainActivity : ComponentActivity() {
@@ -240,6 +242,11 @@ class MainActivity : ComponentActivity() {
 
     enum class Screen { HOME, HISTORY, DETAILS }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -262,6 +269,24 @@ class MainActivity : ComponentActivity() {
                 var neverAskDeleteAgain by remember { mutableStateOf(false) }
                 var lastBackPressTime by remember { mutableLongStateOf(0L) }
                 val coroutineScope = rememberCoroutineScope()
+                
+                // Handle navigation from notification intent
+                LaunchedEffect(intent) {
+                    val returnScreen = intent.getStringExtra(ScannerTTSService.EXTRA_RETURN_SCREEN)
+                    val returnDocId = intent.getIntExtra(ScannerTTSService.EXTRA_DOC_ID, -1)
+                    
+                    if (returnScreen == Screen.DETAILS.name && returnDocId != -1) {
+                        documentDao.getAllDocuments().collectLatest { docs ->
+                            val doc = docs.find { it.id == returnDocId }
+                            if (doc != null) {
+                                selectedDocument = doc
+                                currentScreen = Screen.DETAILS
+                            }
+                        }
+                    } else if (returnScreen == Screen.HOME.name) {
+                        currentScreen = Screen.HOME
+                    }
+                }
 
                 var scannedUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
                 var pdfUri by remember { mutableStateOf<Uri?>(null) }
@@ -271,7 +296,6 @@ class MainActivity : ComponentActivity() {
                 var isCompressing by remember { mutableStateOf(false) }
                 var isWatermarking by remember { mutableStateOf(false) }
                 var aiEditedText by remember { mutableStateOf<String?>(null) }
-                var extractionJob by remember { mutableStateOf<Job?>(null) }
                 var showWatermarkDialog by remember { mutableStateOf(false) }
                 var watermarkInput by remember { mutableStateOf("") }
 
@@ -296,25 +320,35 @@ class MainActivity : ComponentActivity() {
                 val textRecognizer = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
 
                 DisposableEffect(Unit) {
-                    val listener = object : android.speech.tts.UtteranceProgressListener() {
-                        override fun onStart(utteranceId: String?) {}
-                        override fun onDone(utteranceId: String?) {
-                            if (utteranceId?.startsWith("last_") == true || utteranceId == "ScannerAppTTS") {
-                                isSpeaking = false
+                    val receiver = object : BroadcastReceiver() {
+                        override fun onReceive(context: Context?, intent: Intent?) {
+                            if (intent?.action == ScannerTTSService.ACTION_STATUS_UPDATE) {
+                                isSpeaking = intent.getBooleanExtra(ScannerTTSService.EXTRA_IS_SPEAKING, false)
                             }
                         }
-                        @Deprecated("Deprecated in Java")
-                        override fun onError(utteranceId: String?) { isSpeaking = false }
                     }
-                    tts?.setOnUtteranceProgressListener(listener)
+                    val filter = android.content.IntentFilter(ScannerTTSService.ACTION_STATUS_UPDATE)
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
+                    } else {
+                        @Suppress("UnspecifiedRegisterReceiverFlag")
+                        registerReceiver(receiver, filter)
+                    }
+
+                    // Request initial status when activity opens
+                    val statusIntent = Intent(this@MainActivity, ScannerTTSService::class.java).apply {
+                        action = "ACTION_GET_STATUS"
+                    }
+                    startService(statusIntent)
+
                     onDispose {
-                        extractionJob?.cancel()
+                        unregisterReceiver(receiver)
                         tts?.stop()
                         tts?.shutdown()
                     }
                 }
 
-                fun startSpeechService(uris: List<Uri>) {
+                fun startSpeechService(uris: List<Uri>, docId: Int = -1) {
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
                         if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -324,6 +358,8 @@ class MainActivity : ComponentActivity() {
                     val intent = Intent(this@MainActivity, ScannerTTSService::class.java).apply {
                         action = ScannerTTSService.ACTION_START
                         putParcelableArrayListExtra(ScannerTTSService.EXTRA_URIS, ArrayList(uris))
+                        putExtra(ScannerTTSService.EXTRA_RETURN_SCREEN, currentScreen.name)
+                        putExtra(ScannerTTSService.EXTRA_DOC_ID, docId)
                     }
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                         startForegroundService(intent)
@@ -743,7 +779,7 @@ class MainActivity : ComponentActivity() {
                                         if (isSpeaking) {
                                             stopSpeechService()
                                         } else {
-                                            startSpeechService(uris)
+                                            startSpeechService(uris, doc.id)
                                         }
                                     },
                                     onViewTextClick = { uris ->

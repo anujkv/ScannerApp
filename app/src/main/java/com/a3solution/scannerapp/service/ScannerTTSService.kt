@@ -32,14 +32,30 @@ class ScannerTTSService : Service(), TextToSpeech.OnInitListener {
     private var currentUris: List<Uri> = emptyList()
     private var isPaused = false
     private var currentIndex = 0
+    private var returnScreen: String? = null
+    private var docId: Int = -1
 
     companion object {
         const val ACTION_START = "ACTION_START"
         const val ACTION_STOP = "ACTION_STOP"
         const val ACTION_PAUSE_RESUME = "ACTION_PAUSE_RESUME"
         const val ACTION_SPEAK_TEXT = "ACTION_SPEAK_TEXT"
+        const val ACTION_GET_STATUS = "ACTION_GET_STATUS"
         const val EXTRA_URIS = "EXTRA_URIS"
         const val EXTRA_TEXT = "EXTRA_TEXT"
+        const val EXTRA_RETURN_SCREEN = "EXTRA_RETURN_SCREEN"
+        const val EXTRA_DOC_ID = "EXTRA_DOC_ID"
+        
+        const val ACTION_STATUS_UPDATE = "com.a3solution.scannerapp.TTS_STATUS_UPDATE"
+        const val EXTRA_IS_SPEAKING = "EXTRA_IS_SPEAKING"
+    }
+
+    private fun sendStatusBroadcast(isSpeaking: Boolean) {
+        val intent = Intent(ACTION_STATUS_UPDATE).apply {
+            putExtra(EXTRA_IS_SPEAKING, isSpeaking)
+            `package` = packageName
+        }
+        sendBroadcast(intent)
     }
 
     override fun onCreate() {
@@ -55,16 +71,22 @@ class ScannerTTSService : Service(), TextToSpeech.OnInitListener {
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
                     updateNotification("Speaking page ${currentIndex + 1} of ${currentUris.size}")
+                    sendStatusBroadcast(true)
                 }
                 override fun onDone(utteranceId: String?) {
                     if (!isPaused) {
                         currentIndex++
-                        processNextPage()
+                        if (currentIndex >= currentUris.size) {
+                            stopSpeech()
+                        } else {
+                            processNextPage()
+                        }
                     }
                 }
                 @Deprecated("Deprecated in Java")
                 override fun onError(utteranceId: String?) {
                     Log.e(TAG, "TTS Error on $utteranceId")
+                    sendStatusBroadcast(false)
                 }
             })
         } else {
@@ -78,6 +100,9 @@ class ScannerTTSService : Service(), TextToSpeech.OnInitListener {
             ACTION_START -> {
                 @Suppress("DEPRECATION")
                 val uris = intent.getParcelableArrayListExtra<Uri>(EXTRA_URIS)
+                returnScreen = intent.getStringExtra(EXTRA_RETURN_SCREEN)
+                docId = intent.getIntExtra(EXTRA_DOC_ID, -1)
+                
                 if (uris != null) {
                     currentUris = uris
                     currentIndex = 0
@@ -97,6 +122,9 @@ class ScannerTTSService : Service(), TextToSpeech.OnInitListener {
             }
             ACTION_STOP -> {
                 stopSpeech()
+            }
+            ACTION_GET_STATUS -> {
+                sendStatusBroadcast(tts?.isSpeaking == true)
             }
             ACTION_SPEAK_TEXT -> {
                 val text = intent.getStringExtra(EXTRA_TEXT)
@@ -144,6 +172,7 @@ class ScannerTTSService : Service(), TextToSpeech.OnInitListener {
     private fun stopSpeech() {
         tts?.stop()
         extractionJob?.cancel()
+        sendStatusBroadcast(false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
         } else {
@@ -166,8 +195,12 @@ class ScannerTTSService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun createNotification(content: String): Notification {
-        val intent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+        val intent = Intent(this, MainActivity::class.java).apply {
+            putExtra(EXTRA_RETURN_SCREEN, returnScreen)
+            putExtra(EXTRA_DOC_ID, docId)
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
         val pauseIntent = Intent(this, ScannerTTSService::class.java).apply { action = ACTION_PAUSE_RESUME }
         val pausePendingIntent = PendingIntent.getService(this, 1, pauseIntent, PendingIntent.FLAG_IMMUTABLE)

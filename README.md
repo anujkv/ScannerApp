@@ -8,6 +8,8 @@ A simple and efficient Android application for scanning documents using Google M
 - **Global Multi-Page Zoom**: Smooth pinch-to-zoom and panning across the entire document session for detailed inspection.
 - **Animated Contextual UI**: Action buttons automatically animate and hide during zoom to provide a distraction-free, full-screen viewing experience.
 - **AI-Powered Text Extraction**: Extract text from images using Google's Gemini AI, including support for handwritten text.
+- **Batch Text-to-Speech**: Optimized page-by-page speech extraction and synthesis. The app starts speaking as soon as the first page is ready, processing subsequent pages in the background.
+- **Custom Watermarking**: Overlay custom text watermarks onto scanned document pages with adjustable transparency and rotation.
 - **Voice Commands**: Apply AI edits and formatting to extracted text using natural language voice commands.
 - **Text-to-Speech (TTS)**: Read extracted text aloud for accessibility and convenience.
 - **Image Compression**: Reduce document size with built-in compression to save storage space.

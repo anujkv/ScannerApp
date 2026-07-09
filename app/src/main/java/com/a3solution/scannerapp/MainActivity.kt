@@ -78,6 +78,8 @@ import com.a3solution.scannerapp.data.ScannedDocument
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import java.util.Date
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -98,6 +100,10 @@ import android.speech.RecognitionListener
 import android.content.ClipboardManager
 import android.content.ClipData
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Color as AndroidColor
+import androidx.compose.material.icons.automirrored.filled.BrandingWatermark
 import androidx.compose.runtime.DisposableEffect
 import kotlinx.coroutines.tasks.await
 import com.google.ai.client.generativeai.GenerativeModel
@@ -173,6 +179,41 @@ class MainActivity : ComponentActivity() {
         compressedUris
     }
 
+    private suspend fun applyWatermark(uris: List<Uri>, watermarkText: String): List<Uri> = withContext(Dispatchers.IO) {
+        val watermarkedUris = mutableListOf<Uri>()
+        for (uri in uris) {
+            try {
+                val bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                if (bitmap != null) {
+                    val mutableBitmap = bitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+                    val canvas = Canvas(mutableBitmap)
+                    val paint = Paint().apply {
+                        color = AndroidColor.RED
+                        alpha = 100 // Semi-transparent
+                        textSize = (mutableBitmap.height / 20).toFloat()
+                        isAntiAlias = true
+                        textAlign = Paint.Align.CENTER
+                    }
+                    
+                    // Draw diagonal watermark
+                    canvas.save()
+                    canvas.rotate(-45f, (mutableBitmap.width / 2).toFloat(), (mutableBitmap.height / 2).toFloat())
+                    canvas.drawText(watermarkText, (mutableBitmap.width / 2).toFloat(), (mutableBitmap.height / 2).toFloat(), paint)
+                    canvas.restore()
+
+                    val file = File(cacheDir, "watermarked_${System.currentTimeMillis()}_${watermarkedUris.size}.jpg")
+                    java.io.FileOutputStream(file).use { out ->
+                        mutableBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
+                    }
+                    watermarkedUris.add(Uri.fromFile(file))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Watermark error", e)
+            }
+        }
+        watermarkedUris
+    }
+
     private suspend fun extractTextWithAi(uris: List<Uri>): String? {
         if (uris.isEmpty()) return null
         
@@ -227,7 +268,11 @@ class MainActivity : ComponentActivity() {
                 var isListening by remember { mutableStateOf(false) }
                 var isAiProcessing by remember { mutableStateOf(false) }
                 var isCompressing by remember { mutableStateOf(false) }
+                var isWatermarking by remember { mutableStateOf(false) }
                 var aiEditedText by remember { mutableStateOf<String?>(null) }
+                var extractionJob by remember { mutableStateOf<Job?>(null) }
+                var showWatermarkDialog by remember { mutableStateOf(false) }
+                var watermarkInput by remember { mutableStateOf("") }
 
                 val requestPermissionLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission()
@@ -244,24 +289,30 @@ class MainActivity : ComponentActivity() {
                 DisposableEffect(Unit) {
                     val listener = object : android.speech.tts.UtteranceProgressListener() {
                         override fun onStart(utteranceId: String?) {}
-                        override fun onDone(utteranceId: String?) { isSpeaking = false }
+                        override fun onDone(utteranceId: String?) {
+                            if (utteranceId?.startsWith("last_") == true || utteranceId == "ScannerAppTTS") {
+                                isSpeaking = false
+                            }
+                        }
                         @Deprecated("Deprecated in Java")
                         override fun onError(utteranceId: String?) { isSpeaking = false }
                     }
                     tts?.setOnUtteranceProgressListener(listener)
                     onDispose {
+                        extractionJob?.cancel()
                         tts?.stop()
                         tts?.shutdown()
                     }
                 }
 
-                fun speakText(text: String) {
+                fun speakText(text: String, queueMode: Int = TextToSpeech.QUEUE_FLUSH, id: String = "ScannerAppTTS") {
                     if (text.isBlank()) return
                     isSpeaking = true
-                    tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "ScannerAppTTS")
+                    tts?.speak(text, queueMode, null, id)
                 }
 
                 fun stopSpeaking() {
+                    extractionJob?.cancel()
                     tts?.stop()
                     isSpeaking = false
                 }
@@ -324,29 +375,48 @@ class MainActivity : ComponentActivity() {
                         return
                     }
 
-                    Toast.makeText(this@MainActivity, getString(R.string.extracting_text), Toast.LENGTH_SHORT).show()
-                    val fullText = StringBuilder()
-                    
-                    try {
-                        for (uri in uris) {
-                            val image = InputImage.fromFilePath(this@MainActivity, uri)
-                            val result = textRecognizer.process(image).await()
-                            fullText.append(result.text).append("\n")
-                        }
-
-                        val extracted = fullText.toString()
-                        if (extracted.isNotBlank()) {
-                            if (onExtracted != null) {
+                    if (onExtracted != null) {
+                        Toast.makeText(this@MainActivity, getString(R.string.extracting_text), Toast.LENGTH_SHORT).show()
+                        val fullText = StringBuilder()
+                        try {
+                            for (uri in uris) {
+                                val image = InputImage.fromFilePath(this@MainActivity, uri)
+                                val result = textRecognizer.process(image).await()
+                                fullText.append(result.text).append("\n")
+                            }
+                            val extracted = fullText.toString()
+                            if (extracted.isNotBlank()) {
                                 onExtracted(extracted)
                             } else {
-                                speakText(extracted)
+                                Toast.makeText(this@MainActivity, getString(R.string.no_text_found), Toast.LENGTH_SHORT).show()
                             }
-                        } else {
-                            Toast.makeText(this@MainActivity, getString(R.string.no_text_found), Toast.LENGTH_SHORT).show()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error extracting text", e)
+                            Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                         }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error extracting text", e)
-                        Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    } else {
+                        // Streaming logic for direct speaking
+                        extractionJob?.cancel()
+                        extractionJob = coroutineScope.launch {
+                            try {
+                                Toast.makeText(this@MainActivity, "Starting speech...", Toast.LENGTH_SHORT).show()
+                                for ((index, uri) in uris.withIndex()) {
+                                    val image = InputImage.fromFilePath(this@MainActivity, uri)
+                                    val result = textRecognizer.process(image).await()
+                                    val pageText = result.text
+                                    
+                                    if (pageText.isNotBlank()) {
+                                        val mode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+                                        val id = if (index == uris.size - 1) "last_$index" else "page_$index"
+                                        speakText(pageText, mode, id)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                if (e !is CancellationException) {
+                                    Log.e(TAG, "Extraction error", e)
+                                }
+                            }
+                        }
                     }
                 }
                 val options = remember {
@@ -389,6 +459,56 @@ class MainActivity : ComponentActivity() {
                         },
                         dismissButton = {
                             TextButton(onClick = { showExitDialog = false }) {
+                                Text(stringResource(R.string.cancel_button))
+                            }
+                        }
+                    )
+                }
+
+                if (showWatermarkDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showWatermarkDialog = false },
+                        title = { Text("Add Watermark") },
+                        text = {
+                            TextField(
+                                value = watermarkInput,
+                                onValueChange = { watermarkInput = it },
+                                label = { Text("Watermark Text") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                if (watermarkInput.isNotBlank()) {
+                                    val urisToWatermark = if (currentScreen == Screen.HOME) scannedUris else {
+                                        selectedDocument?.imageUris?.split(",")?.filter { it.isNotEmpty() }?.map { Uri.parse(it) } ?: emptyList()
+                                    }
+                                    
+                                    coroutineScope.launch {
+                                        isWatermarking = true
+                                        val newUris = applyWatermark(urisToWatermark, watermarkInput)
+                                        if (newUris.isNotEmpty()) {
+                                            if (currentScreen == Screen.HOME) {
+                                                scannedUris = newUris
+                                            } else {
+                                                selectedDocument?.let { doc ->
+                                                    val updatedDoc = doc.copy(imageUris = newUris.joinToString(",") { it.toString() })
+                                                    documentDao.insertDocument(updatedDoc)
+                                                    selectedDocument = updatedDoc
+                                                }
+                                            }
+                                            Toast.makeText(this@MainActivity, "Watermark applied", Toast.LENGTH_SHORT).show()
+                                        }
+                                        isWatermarking = false
+                                        showWatermarkDialog = false
+                                    }
+                                }
+                            }) {
+                                Text("Apply")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showWatermarkDialog = false }) {
                                 Text(stringResource(R.string.cancel_button))
                             }
                         }
@@ -568,9 +688,11 @@ class MainActivity : ComponentActivity() {
                                 isListening = isListening,
                                 isAiProcessing = isAiProcessing,
                                 isCompressing = isCompressing,
+                                isWatermarking = isWatermarking,
                                 aiEditedText = aiEditedText,
                                 onAiEditedTextChange = { aiEditedText = it },
-                                onClearAiEdit = { aiEditedText = null }
+                                onClearAiEdit = { aiEditedText = null },
+                                onWatermarkClick = { showWatermarkDialog = true }
                             )
                         }
                         Screen.HISTORY -> {
@@ -662,9 +784,11 @@ class MainActivity : ComponentActivity() {
                                     isListening = isListening,
                                     isAiProcessing = isAiProcessing,
                                     isCompressing = isCompressing,
+                                    isWatermarking = isWatermarking,
                                     aiEditedText = aiEditedText,
                                     onAiEditedTextChange = { aiEditedText = it },
-                                    onClearAiEdit = { aiEditedText = null }
+                                    onClearAiEdit = { aiEditedText = null },
+                                    onWatermarkClick = { showWatermarkDialog = true }
                                 )
                             }
                         }
@@ -683,6 +807,7 @@ class MainActivity : ComponentActivity() {
         isListening: Boolean,
         isAiProcessing: Boolean,
         isCompressing: Boolean,
+        isWatermarking: Boolean,
         aiEditedText: String?,
         onAiEditedTextChange: (String) -> Unit,
         onScanClick: () -> Unit,
@@ -695,7 +820,8 @@ class MainActivity : ComponentActivity() {
         onAiEditClick: () -> Unit,
         onAiVisualScanClick: () -> Unit,
         onCompressClick: () -> Unit,
-        onClearAiEdit: () -> Unit
+        onClearAiEdit: () -> Unit,
+        onWatermarkClick: () -> Unit
     ) {
         Column(
             modifier = modifier.fillMaxSize(),
@@ -839,6 +965,18 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                             }
+                            IconButton(onClick = onWatermarkClick) {
+                                if (isWatermarking) {
+                                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                } else {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.BrandingWatermark,
+                                        contentDescription = "Watermark",
+                                        modifier = Modifier.size(40.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
                         }
 
                         Row(
@@ -946,6 +1084,7 @@ class MainActivity : ComponentActivity() {
         isListening: Boolean,
         isAiProcessing: Boolean,
         isCompressing: Boolean,
+        isWatermarking: Boolean,
         aiEditedText: String?,
         onAiEditedTextChange: (String) -> Unit,
         onShareImages: (List<Uri>) -> Unit,
@@ -957,7 +1096,8 @@ class MainActivity : ComponentActivity() {
         onAiVisualScanClick: (List<Uri>) -> Unit,
         onCompressClick: (List<Uri>) -> Unit,
         onSaveClick: (String?) -> Unit,
-        onClearAiEdit: () -> Unit
+        onClearAiEdit: () -> Unit,
+        onWatermarkClick: () -> Unit
     ) {
         val imageUris = remember(document) { document.imageUris.split(",").filter { it.isNotEmpty() }.map { Uri.parse(it) } }
         val pdfUri = remember(document) { document.pdfUri?.let { Uri.parse(it) } }
@@ -1090,6 +1230,18 @@ class MainActivity : ComponentActivity() {
                                 Icon(
                                     Icons.Default.Compress,
                                     contentDescription = "Compress",
+                                    modifier = Modifier.size(40.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        IconButton(onClick = onWatermarkClick) {
+                            if (isWatermarking) {
+                                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                            } else {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.BrandingWatermark,
+                                    contentDescription = "Watermark",
                                     modifier = Modifier.size(40.dp),
                                     tint = MaterialTheme.colorScheme.primary
                                 )

@@ -118,6 +118,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.ui.graphics.graphicsLayer
+import com.a3solution.scannerapp.service.ScannerTTSService
 
 class MainActivity : ComponentActivity() {
     private val TAG = "ScannerApp_Main"
@@ -274,6 +275,14 @@ class MainActivity : ComponentActivity() {
                 var showWatermarkDialog by remember { mutableStateOf(false) }
                 var watermarkInput by remember { mutableStateOf("") }
 
+                val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission()
+                ) { isGranted: Boolean ->
+                    if (!isGranted) {
+                        Toast.makeText(this@MainActivity, "Notifications are required to speak in background.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
                 val requestPermissionLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission()
                 ) { isGranted: Boolean ->
@@ -305,16 +314,45 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                fun speakText(text: String, queueMode: Int = TextToSpeech.QUEUE_FLUSH, id: String = "ScannerAppTTS") {
-                    if (text.isBlank()) return
+                fun startSpeechService(uris: List<Uri>) {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            return
+                        }
+                    }
+                    val intent = Intent(this@MainActivity, ScannerTTSService::class.java).apply {
+                        action = ScannerTTSService.ACTION_START
+                        putParcelableArrayListExtra(ScannerTTSService.EXTRA_URIS, ArrayList(uris))
+                    }
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        startForegroundService(intent)
+                    } else {
+                        startService(intent)
+                    }
                     isSpeaking = true
-                    tts?.speak(text, queueMode, null, id)
                 }
 
-                fun stopSpeaking() {
-                    extractionJob?.cancel()
-                    tts?.stop()
+                fun stopSpeechService() {
+                    val intent = Intent(this@MainActivity, ScannerTTSService::class.java).apply {
+                        action = ScannerTTSService.ACTION_STOP
+                    }
+                    startService(intent)
                     isSpeaking = false
+                }
+
+                fun speakText(text: String) {
+                    if (text.isBlank()) return
+                    val intent = Intent(this@MainActivity, ScannerTTSService::class.java).apply {
+                        action = ScannerTTSService.ACTION_SPEAK_TEXT
+                        putExtra(ScannerTTSService.EXTRA_TEXT, text)
+                    }
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        startForegroundService(intent)
+                    } else {
+                        startService(intent)
+                    }
+                    isSpeaking = true
                 }
 
                 fun startVoiceCommand(onCommandReceived: (String) -> Unit) {
@@ -395,28 +433,7 @@ class MainActivity : ComponentActivity() {
                             Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                         }
                     } else {
-                        // Streaming logic for direct speaking
-                        extractionJob?.cancel()
-                        extractionJob = coroutineScope.launch {
-                            try {
-                                Toast.makeText(this@MainActivity, "Starting speech...", Toast.LENGTH_SHORT).show()
-                                for ((index, uri) in uris.withIndex()) {
-                                    val image = InputImage.fromFilePath(this@MainActivity, uri)
-                                    val result = textRecognizer.process(image).await()
-                                    val pageText = result.text
-                                    
-                                    if (pageText.isNotBlank()) {
-                                        val mode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-                                        val id = if (index == uris.size - 1) "last_$index" else "page_$index"
-                                        speakText(pageText, mode, id)
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                if (e !is CancellationException) {
-                                    Log.e(TAG, "Extraction error", e)
-                                }
-                            }
-                        }
+                        startSpeechService(uris)
                     }
                 }
                 val options = remember {
@@ -637,9 +654,9 @@ class MainActivity : ComponentActivity() {
                                 onPrintPdf = { printPdf(it) },
                                 onSpeakClick = {
                                     if (isSpeaking) {
-                                        stopSpeaking()
+                                        stopSpeechService()
                                     } else {
-                                        coroutineScope.launch { extractAndSpeak(scannedUris) }
+                                        startSpeechService(scannedUris)
                                     }
                                 },
                                 onViewTextClick = {
@@ -724,9 +741,9 @@ class MainActivity : ComponentActivity() {
                                     onPrintPdf = { printPdf(it) },
                                     onSpeakClick = { uris ->
                                         if (isSpeaking) {
-                                            stopSpeaking()
+                                            stopSpeechService()
                                         } else {
-                                            coroutineScope.launch { extractAndSpeak(uris) }
+                                            startSpeechService(uris)
                                         }
                                     },
                                     onViewTextClick = { uris ->

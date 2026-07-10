@@ -198,6 +198,9 @@ class ScannerTTSService : Service(), TextToSpeech.OnInitListener {
         val intent = Intent(this, MainActivity::class.java).apply {
             putExtra(EXTRA_RETURN_SCREEN, returnScreen)
             putExtra(EXTRA_DOC_ID, docId)
+            if (returnScreen == "HOME") {
+                putParcelableArrayListExtra(EXTRA_URIS, ArrayList(currentUris))
+            }
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -226,6 +229,12 @@ class ScannerTTSService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        Log.d(TAG, "Task removed - stopping speech service")
+        stopSpeech()
+    }
 
     override fun onDestroy() {
         super.onDestroy()

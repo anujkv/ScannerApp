@@ -102,8 +102,8 @@ import android.content.ClipData
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.pdf.PdfDocument
 import android.graphics.Color as AndroidColor
-import androidx.compose.material.icons.automirrored.filled.BrandingWatermark
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.tasks.await
@@ -113,13 +113,24 @@ import com.google.ai.client.generativeai.type.content
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Slider
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.material3.TextField
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.flow.collectLatest
+import kotlin.math.roundToInt
 import com.a3solution.scannerapp.service.ScannerTTSService
 
 class MainActivity : ComponentActivity() {
@@ -182,7 +193,7 @@ class MainActivity : ComponentActivity() {
         compressedUris
     }
 
-    private suspend fun applyWatermark(uris: List<Uri>, watermarkText: String): List<Uri> = withContext(Dispatchers.IO) {
+    private suspend fun applyWatermark(uris: List<Uri>, watermarkText: String, normalizedPosition: Offset, rotation: Float, isTiled: Boolean, scaleFactor: Float, watermarkColor: Int): List<Uri> = withContext(Dispatchers.IO) {
         val watermarkedUris = mutableListOf<Uri>()
         for (uri in uris) {
             try {
@@ -191,18 +202,35 @@ class MainActivity : ComponentActivity() {
                     val mutableBitmap = bitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
                     val canvas = Canvas(mutableBitmap)
                     val paint = Paint().apply {
-                        color = AndroidColor.RED
-                        alpha = 100 // Semi-transparent
-                        textSize = (mutableBitmap.height / 20).toFloat()
+                        color = watermarkColor
+                        alpha = if (isTiled) 60 else 100
+                        textSize = (mutableBitmap.height / (if (isTiled) 30 else 20)).toFloat() * scaleFactor
                         isAntiAlias = true
                         textAlign = Paint.Align.CENTER
                     }
                     
-                    // Draw diagonal watermark
-                    canvas.save()
-                    canvas.rotate(-45f, (mutableBitmap.width / 2).toFloat(), (mutableBitmap.height / 2).toFloat())
-                    canvas.drawText(watermarkText, (mutableBitmap.width / 2).toFloat(), (mutableBitmap.height / 2).toFloat(), paint)
-                    canvas.restore()
+                    if (isTiled) {
+                        val stepX = mutableBitmap.width / 3f
+                        val stepY = mutableBitmap.height / 5f
+                        for (i in 0..3) {
+                            for (j in 0..5) {
+                                val x = i * stepX
+                                val y = j * stepY
+                                canvas.save()
+                                canvas.rotate(rotation, x, y)
+                                canvas.drawText(watermarkText, x, y, paint)
+                                canvas.restore()
+                            }
+                        }
+                    } else {
+                        val x = mutableBitmap.width * normalizedPosition.x
+                        val y = mutableBitmap.height * normalizedPosition.y
+                        
+                        canvas.save()
+                        canvas.rotate(rotation, x, y)
+                        canvas.drawText(watermarkText, x, y, paint)
+                        canvas.restore()
+                    }
 
                     val file = File(cacheDir, "watermarked_${System.currentTimeMillis()}_${watermarkedUris.size}.jpg")
                     java.io.FileOutputStream(file).use { out ->
@@ -215,6 +243,31 @@ class MainActivity : ComponentActivity() {
             }
         }
         watermarkedUris
+    }
+
+    private suspend fun generatePdfFromImages(uris: List<Uri>): Uri? = withContext(Dispatchers.IO) {
+        val pdfDocument = PdfDocument()
+        try {
+            for ((index, uri) in uris.withIndex()) {
+                val bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                if (bitmap != null) {
+                    val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, index + 1).create()
+                    val page = pdfDocument.startPage(pageInfo)
+                    page.canvas.drawBitmap(bitmap, 0f, 0f, null)
+                    pdfDocument.finishPage(page)
+                }
+            }
+            val file = File(cacheDir, "generated_${System.currentTimeMillis()}.pdf")
+            java.io.FileOutputStream(file).use { out ->
+                pdfDocument.writeTo(out)
+            }
+            Uri.fromFile(file)
+        } catch (e: Exception) {
+            Log.e(TAG, "PDF generation error", e)
+            null
+        } finally {
+            pdfDocument.close()
+        }
     }
 
     private suspend fun extractTextWithAi(uris: List<Uri>): String? {
@@ -269,6 +322,17 @@ class MainActivity : ComponentActivity() {
                 var neverAskDeleteAgain by remember { mutableStateOf(false) }
                 var lastBackPressTime by remember { mutableLongStateOf(0L) }
                 val coroutineScope = rememberCoroutineScope()
+
+                var scannedUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+                var pdfUri by remember { mutableStateOf<Uri?>(null) }
+                var isSpeaking by remember { mutableStateOf(false) }
+                var isListening by remember { mutableStateOf(false) }
+                var isAiProcessing by remember { mutableStateOf(false) }
+                var isCompressing by remember { mutableStateOf(false) }
+                var isWatermarking by remember { mutableStateOf(false) }
+                var aiEditedText by remember { mutableStateOf<String?>(null) }
+                var showWatermarkDialog by remember { mutableStateOf(false) }
+                var watermarkInput by remember { mutableStateOf("") }
                 
                 // Handle navigation from notification intent
                 LaunchedEffect(intent) {
@@ -285,19 +349,13 @@ class MainActivity : ComponentActivity() {
                         }
                     } else if (returnScreen == Screen.HOME.name) {
                         currentScreen = Screen.HOME
+                        @Suppress("DEPRECATION")
+                        val uris = intent.getParcelableArrayListExtra<Uri>(ScannerTTSService.EXTRA_URIS)
+                        if (uris != null) {
+                            scannedUris = uris
+                        }
                     }
                 }
-
-                var scannedUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
-                var pdfUri by remember { mutableStateOf<Uri?>(null) }
-                var isSpeaking by remember { mutableStateOf(false) }
-                var isListening by remember { mutableStateOf(false) }
-                var isAiProcessing by remember { mutableStateOf(false) }
-                var isCompressing by remember { mutableStateOf(false) }
-                var isWatermarking by remember { mutableStateOf(false) }
-                var aiEditedText by remember { mutableStateOf<String?>(null) }
-                var showWatermarkDialog by remember { mutableStateOf(false) }
-                var watermarkInput by remember { mutableStateOf("") }
 
                 val notificationPermissionLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission()
@@ -519,16 +577,154 @@ class MainActivity : ComponentActivity() {
                 }
 
                 if (showWatermarkDialog) {
+                    var dragOffset by remember { mutableStateOf(Offset.Zero) }
+                    var containerSize by remember { mutableStateOf(IntSize.Zero) }
+                    var textSize by remember { mutableStateOf(IntSize.Zero) }
+                    var rotation by remember { mutableFloatStateOf(-45f) }
+                    var scaleFactor by remember { mutableFloatStateOf(1f) }
+                    var isTiled by remember { mutableStateOf(false) }
+                    var selectedColor by remember { mutableStateOf(Color.Gray) }
+                    var showColorPicker by remember { mutableStateOf(false) }
+                    
+                    val mainColors = listOf(
+                        Color.Red, Color.Green, Color.Blue, Color.Yellow, 
+                        Color.Cyan, Color.Magenta, Color.Gray
+                    )
+                    
+                    val previewUri = if (currentScreen == Screen.HOME) scannedUris.firstOrNull() else {
+                        selectedDocument?.imageUris?.split(",")?.firstOrNull { it.isNotEmpty() }?.let { Uri.parse(it) }
+                    }
+
                     AlertDialog(
                         onDismissRequest = { showWatermarkDialog = false },
-                        title = { Text("Add Watermark") },
+                        title = { Text("Watermark") },
                         text = {
-                            TextField(
-                                value = watermarkInput,
-                                onValueChange = { watermarkInput = it },
-                                label = { Text("Watermark Text") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            Column {
+                                TextField(
+                                    value = watermarkInput,
+                                    onValueChange = { watermarkInput = it },
+                                    label = { Text("Watermark Text") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically, 
+                                        modifier = Modifier.weight(1f).clickable { isTiled = !isTiled }
+                                    ) {
+                                        Checkbox(checked = isTiled, onCheckedChange = { isTiled = it })
+                                        Text("Tile across document", style = MaterialTheme.typography.bodyMedium)
+                                    }
+                                    
+                                    // Color Box
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .background(selectedColor, MaterialTheme.shapes.small)
+                                            .clickable { showColorPicker = !showColorPicker }
+                                    )
+                                }
+                                
+                                if (showColorPicker) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceEvenly
+                                    ) {
+                                        mainColors.forEach { color ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .background(color, androidx.compose.foundation.shape.CircleShape)
+                                                    .clickable {
+                                                        selectedColor = color
+                                                        showColorPicker = false
+                                                    }
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                                        Text("Rotation: ${rotation.roundToInt()}°", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                    
+                                    Slider(
+                                        value = rotation,
+                                        onValueChange = { rotation = it },
+                                        valueRange = -180f..180f,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+
+                                    Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                                        Text("Size: ${(scaleFactor * 100).roundToInt()}%", style = MaterialTheme.typography.labelSmall)
+                                    }
+
+                                    Slider(
+                                        value = scaleFactor,
+                                        onValueChange = { scaleFactor = it },
+                                        valueRange = 0.5f..3f,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                
+                                androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(8.dp))
+                                if (previewUri != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(300.dp)
+                                            .background(Color.Black.copy(alpha = 0.05f))
+                                            .onGloballyPositioned { containerSize = it.size },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        AsyncImage(
+                                            model = previewUri,
+                                            contentDescription = null,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Fit
+                                        )
+                                        if (watermarkInput.isNotBlank()) {
+                                            val previewColor = selectedColor.copy(alpha = if (isTiled) 0.4f else 0.8f)
+                                            if (isTiled) {
+                                                Column(modifier = Modifier.fillMaxSize().graphicsLayer(rotationZ = rotation), verticalArrangement = Arrangement.SpaceEvenly) {
+                                                    repeat(5) {
+                                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                                            repeat(3) {
+                                                                Text(
+                                                                    text = watermarkInput, 
+                                                                    color = previewColor, 
+                                                                    fontSize = (10 * scaleFactor).sp
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                Text(
+                                                    text = watermarkInput,
+                                                    color = previewColor,
+                                                    fontSize = (20 * scaleFactor).sp,
+                                                    modifier = Modifier
+                                                        .offset { IntOffset(dragOffset.x.roundToInt(), dragOffset.y.roundToInt()) }
+                                                        .onGloballyPositioned { textSize = it.size }
+                                                        .graphicsLayer(rotationZ = rotation)
+                                                        .pointerInput(Unit) {
+                                                            detectDragGestures { change, dragAmount ->
+                                                                change.consume()
+                                                                dragOffset += dragAmount
+                                                            }
+                                                        }
+                                                        .padding(8.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (!isTiled) {
+                                        Text("Drag the text to reposition", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 8.dp))
+                                    }
+                                }
+                            }
                         },
                         confirmButton = {
                             TextButton(onClick = {
@@ -537,23 +733,47 @@ class MainActivity : ComponentActivity() {
                                         selectedDocument?.imageUris?.split(",")?.filter { it.isNotEmpty() }?.map { Uri.parse(it) } ?: emptyList()
                                     }
                                     
+                                    // Calculate center point normalized
+                                    val actualCenterX = containerSize.width / 2f + dragOffset.x
+                                    val actualCenterY = containerSize.height / 2f + dragOffset.y
+                                    
+                                    val normalizedX = if (containerSize.width > 0) actualCenterX / containerSize.width else 0.5f
+                                    val normalizedY = if (containerSize.height > 0) actualCenterY / containerSize.height else 0.5f
+                                    
+                                    val colorInt = android.graphics.Color.argb(
+                                        255,
+                                        (selectedColor.red * 255).toInt(),
+                                        (selectedColor.green * 255).toInt(),
+                                        (selectedColor.blue * 255).toInt()
+                                    )
+
                                     coroutineScope.launch {
+                                        Toast.makeText(this@MainActivity, "Applying watermark...", Toast.LENGTH_SHORT).show()
                                         isWatermarking = true
-                                        val newUris = applyWatermark(urisToWatermark, watermarkInput)
+                                        val newUris = applyWatermark(urisToWatermark, watermarkInput, Offset(normalizedX, normalizedY), rotation, isTiled, scaleFactor, colorInt)
                                         if (newUris.isNotEmpty()) {
+                                            val newPdfUri = generatePdfFromImages(newUris)
                                             if (currentScreen == Screen.HOME) {
                                                 scannedUris = newUris
+                                                pdfUri = newPdfUri
                                             } else {
                                                 selectedDocument?.let { doc ->
-                                                    val updatedDoc = doc.copy(imageUris = newUris.joinToString(",") { it.toString() })
-                                                    documentDao.insertDocument(updatedDoc)
-                                                    selectedDocument = updatedDoc
+                                                    val newDoc = doc.copy(
+                                                        id = 0, // Generate new ID for Room
+                                                        name = "${doc.name} (Watermarked)",
+                                                        timestamp = System.currentTimeMillis(),
+                                                        imageUris = newUris.joinToString(",") { it.toString() },
+                                                        pdfUri = newPdfUri?.toString()
+                                                    )
+                                                    documentDao.insertDocument(newDoc)
+                                                    Toast.makeText(this@MainActivity, "New watermarked copy created in history", Toast.LENGTH_SHORT).show()
+                                                    currentScreen = Screen.HISTORY
                                                 }
                                             }
-                                            Toast.makeText(this@MainActivity, "Watermark applied", Toast.LENGTH_SHORT).show()
                                         }
                                         isWatermarking = false
                                         showWatermarkDialog = false
+                                        watermarkInput = ""
                                     }
                                 }
                             }) {
@@ -935,8 +1155,9 @@ class MainActivity : ComponentActivity() {
                     exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut()
                 ) {
                     Column {
+                        // Row 1: Primary Actions (Share, Print, Save)
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
                             horizontalArrangement = Arrangement.SpaceEvenly,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -966,6 +1187,22 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                             }
+                            IconButton(onClick = onSaveClick) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_save),
+                                    contentDescription = stringResource(R.string.save_document_desc),
+                                    modifier = Modifier.size(40.dp),
+                                    tint = Color.Unspecified
+                                )
+                            }
+                        }
+
+                        // Row 2: Secondary/AI Actions
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             IconButton(onClick = onSpeakClick) {
                                 Icon(
                                     painter = painterResource(id = if (isSpeaking) R.drawable.ic_stop else R.drawable.ic_speaker),
@@ -1023,27 +1260,12 @@ class MainActivity : ComponentActivity() {
                                     CircularProgressIndicator(modifier = Modifier.size(28.dp))
                                 } else {
                                     Icon(
-                                        Icons.AutoMirrored.Filled.BrandingWatermark,
+                                        painter = painterResource(id = R.drawable.watermark_scanner),
                                         contentDescription = "Watermark",
                                         modifier = Modifier.size(40.dp),
                                         tint = MaterialTheme.colorScheme.primary
                                     )
                                 }
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            IconButton(onClick = onSaveClick) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.ic_save),
-                                    contentDescription = stringResource(R.string.save_document_desc),
-                                    modifier = Modifier.size(40.dp),
-                                    tint = Color.Unspecified
-                                )
                             }
                         }
                     }
@@ -1205,8 +1427,9 @@ class MainActivity : ComponentActivity() {
                 exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut()
             ) {
                 Column {
+                    // Row 1: Primary Actions
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1236,6 +1459,22 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
+                        IconButton(onClick = { onSaveClick(aiEditedText) }) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_save),
+                                contentDescription = stringResource(R.string.save_document_desc),
+                                modifier = Modifier.size(40.dp),
+                                tint = androidx.compose.ui.graphics.Color.Unspecified
+                            )
+                        }
+                    }
+
+                    // Row 2: Processing & AI
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         IconButton(onClick = { onSpeakClick(imageUris) }) {
                             Icon(
                                 painter = painterResource(id = if (isSpeaking) R.drawable.ic_stop else R.drawable.ic_speaker),
@@ -1293,27 +1532,12 @@ class MainActivity : ComponentActivity() {
                                 CircularProgressIndicator(modifier = Modifier.size(28.dp))
                             } else {
                                 Icon(
-                                    Icons.AutoMirrored.Filled.BrandingWatermark,
+                                    painter = painterResource(id = R.drawable.watermark_scanner),
                                     contentDescription = "Watermark",
                                     modifier = Modifier.size(40.dp),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { onSaveClick(aiEditedText) }) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_save),
-                                contentDescription = stringResource(R.string.save_document_desc),
-                                modifier = Modifier.size(40.dp),
-                                tint = androidx.compose.ui.graphics.Color.Unspecified
-                            )
                         }
                     }
                 }

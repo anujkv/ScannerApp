@@ -1,51 +1,54 @@
 # ScannerApp
 
-A simple and efficient Android application for scanning documents using Google ML Kit's Document Scanner API.
+A high-performance Android application for professional document scanning, AI-powered processing, and advanced document management.
 
-## Features
+## Key Features
 
-- **Document Scanning**: High-quality document scanning with automatic edge detection and perspective correction.
-- **Global Multi-Page Zoom**: Smooth pinch-to-zoom and panning across the entire document session for detailed inspection.
-- **Animated Contextual UI**: Action buttons automatically animate and hide during zoom to provide a distraction-free, full-screen viewing experience.
-- **AI-Powered Text Extraction**: Extract text from images using Google's Gemini AI, including support for handwritten text.
-- **Voice Commands**: Apply AI edits and formatting to extracted text using natural language voice commands.
-- **Text-to-Speech (TTS)**: Read extracted text aloud for accessibility and convenience.
-- **Image Compression**: Reduce document size with built-in compression to save storage space.
-- **File Size Tracking**: View the total size of your scanned documents directly in the history list.
-- **Document History**: Save and manage your scanned documents with persistent storage.
-- **Multiple Formats**: Support for both JPEG (images) and PDF output.
-- **Multi-page Scanning**: Scan multiple pages into a single session.
-- **Image Preview**: View scanned pages in a scrollable list.
-- **Sharing**: Easily share scanned images or the generated PDF with other applications.
-- **Printing**: Direct printing support for scanned documents.
-- **Gallery Import**: Option to import existing images from the gallery for processing.
-- **Confirmation Dialogs**: Safety features like exit confirmation and delete confirmation with "Never ask again" option.
+- **Smart Document Scanning**: High-quality scanning with automatic edge detection, perspective correction, and multi-page support via Google ML Kit.
+- **Advanced Interactive Watermarking**:
+    - **Precise Positioning**: Drag and drop watermark text to any position on the document.
+    - **Full Control**: Adjust rotation (-180° to 180°), size (50% to 300%), and color (7 main professional colors).
+    - **Tiled Pattern**: Option to repeat the watermark across the entire page in a 3x6 grid for maximum security.
+    - **Seamless Integration**: Watermarks are permanently merged into exported JPEG images and generated PDFs.
+- **Media Player Style Background Speech**:
+    - **Foreground Service**: Listen to your documents while the app is in the background or minimized.
+    - **Notification Controls**: Pause, Resume, or Stop reading directly from the notification tray.
+    - **Smart Redirection**: Tap the notification to jump back exactly to the home session or document details page you were viewing.
+    - **Batch Processing**: Optimized page-by-page extraction; the app starts reading the first page instantly while processing subsequent pages in the background.
+- **Gemini AI Integration**:
+    - **AI Visual Scan**: Deep text extraction including handwritten notes using Gemini 1.5 Flash.
+    - **AI Voice Edits**: Apply complex edits to extracted text using natural language voice commands.
+- **Enhanced UX**:
+    - **Global Multi-Page Zoom**: Smooth pinch-to-zoom across the entire scrollable document list.
+    - **Contextual UI**: Action buttons automatically hide during zoom to provide a distraction-free, full-screen view.
+    - **Image Compression**: One-tap size reduction (approx. 60%) to save storage space.
+- **Document Management**: 
+    - Full persistent history with file size tracking.
+    - Native Android Print Framework support.
+    - Secure file sharing via `FileProvider`.
 
 ## Technologies Used
 
-- **Kotlin**: Primary programming language.
-- **Jetpack Compose**: Modern UI toolkit for building the native interface.
-- **Google Gemini AI**: Integration via Generative AI SDK for advanced text extraction and processing.
-- **ML Kit Document Scanner**: Google's powerful document scanning library.
-- **ML Kit Text Recognition**: For on-device OCR capabilities.
-- **Speech Services**: Android Speech-to-Text (RecognizerIntent) and Text-to-Speech (TTS) integration.
-- **Room Persistence Library**: Local database for saving document history and metadata.
-- **Coil**: Image loading library for Compose.
-- **Android Print Framework**: For document printing capabilities.
-- **FileProvider**: Securely sharing files between apps.
-- **Coroutines & Flow**: For asynchronous operations and reactive database updates.
+- **Kotlin**: Core language.
+- **Jetpack Compose**: Declarative UI with advanced animations and gesture handling.
+- **Google Gemini AI**: Generative AI SDK for advanced document intelligence.
+- **ML Kit**: Document Scanner and Text Recognition (OCR) APIs.
+- **Room Database**: Local metadata and history persistence.
+- **Coil**: Responsive image loading and previewing.
+- **Android Service Framework**: Foreground services for reliable background task execution.
 
 ## Prerequisites
 
 - Android Studio Ladybug or newer.
 - Android device or emulator running API level 24 (Android 7.0) or higher.
-- Google Play Services installed on the device (required for ML Kit).
+- Google Play Services installed on the device.
+- Gemini API Key (configured in `MainActivity.kt`).
 
 ## Getting Started
 
 1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/your-username/ScannerApp.git
+    git clone https://github.com/anujkv/ScannerApp.git
     ```
 2.  **Open in Android Studio**:
     Launch Android Studio and select "Open" to navigate to the project folder.
@@ -54,11 +57,10 @@ A simple and efficient Android application for scanning documents using Google M
 
 ## Project Structure
 
-- `MainActivity.kt`: Main UI and logic handling for scanning, history, and document details.
-- `data/`: Contains Room database configuration, DAOs, and Entity models (`ScannedDocument.kt`, `DocumentDao.kt`, `AppDatabase.kt`).
-- `ui/theme/`: Compose theme and styling definitions.
-- `res/xml/file_paths.xml`: Configuration for `FileProvider` to enable secure file sharing.
-- `build.gradle.kts`: Project dependencies and configuration.
+- `MainActivity.kt`: Main UI coordinator for scanning, history, and document interaction.
+- `service/ScannerTTSService.kt`: Handles background speech synthesis and OCR processing.
+- `data/`: Room database layer (`ScannedDocument.kt`, `DocumentDao.kt`, `AppDatabase.kt`).
+- `ui/theme/`: Material 3 design system implementation.
 
 ## License
 

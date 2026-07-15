@@ -414,11 +414,35 @@ class MainActivity : ComponentActivity() {
                 val scanner = remember { GmsDocumentScanning.getClient(options) }
                 val scannerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
                     if (result.resultCode == RESULT_OK) {
-                        val gmsResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
-                        gmsResult?.let { res ->
-                            scannedUris = res.pages?.map { it.imageUri } ?: emptyList()
-                            pdfUri = res.pdf?.uri
+                        try {
+                            val intentData = result.data
+                            if (intentData != null) {
+                                val gmsResult = GmsDocumentScanningResult.fromActivityResultIntent(intentData)
+                                if (gmsResult != null) {
+                                    scannedUris = gmsResult.pages?.filterNotNull()?.map { it.imageUri } ?: emptyList()
+                                    pdfUri = gmsResult.pdf?.uri
+                                } else {
+                                    Log.e(TAG, "Scanner result is null")
+                                    Toast.makeText(this@MainActivity, "Failed to retrieve scan result", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                Log.e(TAG, "Result data intent is null")
+                                Toast.makeText(this@MainActivity, "No data received from scanner", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error parsing scanner result", e)
+                            Toast.makeText(this@MainActivity, "Error processing scan", Toast.LENGTH_SHORT).show()
                         }
+                    }
+                }
+
+                val galleryLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.GetMultipleContents()
+                ) { uris ->
+                    if (uris.isNotEmpty()) {
+                        scannedUris = uris
+                        // Reset PDF URI when new images are picked from gallery
+                        pdfUri = null
                     }
                 }
 
@@ -635,6 +659,7 @@ class MainActivity : ComponentActivity() {
                             onCompressClick = { coroutineScope.launch { isCompressing = true; val newUris = compressImages(scannedUris); if (newUris.isNotEmpty()) scannedUris = newUris; isCompressing = false } },
                             onClearAiEdit = { aiEditedText = null },
                             onWatermarkClick = { showWatermarkDialog = true },
+                            onGalleryClick = { galleryLauncher.launch("image/*") },
                             copyToClipboard = ::copyToClipboard
                         )
                         Screen.HISTORY -> {

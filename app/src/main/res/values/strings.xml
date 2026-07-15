@@ -45,6 +45,7 @@
     <string name="position_frame_hint">Position document inside the frame</string>
     <string name="edge_detection_hint">Edges auto-detected. Hold steady.</string>
     <string name="share_label">Share</string>
+    <string name="gallery_label">Gallery</string>
     <string name="actions_header">ACTIONS</string>
     <string name="share_image_title">Share as Image</string>
     <string name="share_image_subtitle">Send as JPG or PNG</string>

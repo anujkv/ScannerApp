@@ -56,6 +56,7 @@ fun HomeScreen(
     onCompressClick: () -> Unit,
     onClearAiEdit: () -> Unit,
     onWatermarkClick: () -> Unit,
+    onGalleryClick: () -> Unit,
     copyToClipboard: (String) -> Unit
 ) {
     var scale by remember { mutableFloatStateOf(1f) }
@@ -97,13 +98,13 @@ fun HomeScreen(
                             Text(stringResource(R.string.edge_detection_hint), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                             Spacer(modifier = Modifier.height(24.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Button(onClick = { /* Pick from gallery */ },
+                                Button(onClick = onGalleryClick,
                                     colors = ButtonDefaults
                                         .buttonColors(containerColor = Color.White, contentColor = colorResource(R.color.text_primary)),
                                     border = BorderStroke(1.dp, colorResource(R.color.light_primary))) {
                                     Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text(stringResource(R.string.share_label), color = colorResource(R.color.text_primary)) }
+                                    Text(stringResource(R.string.gallery_label), color = colorResource(R.color.text_primary)) }
                                 Button(onClick = onScanClick, colors = ButtonDefaults.buttonColors(containerColor = colorResource(R.color.primary))) { Icon(Icons.Default.QrCodeScanner, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp)); Spacer(modifier = Modifier.width(8.dp)); Text(text = stringResource(R.string.scan_document_button), color = Color(0xFFFFFFFF) ) }
                             }
                         }
@@ -193,6 +194,7 @@ fun HomeScreenPreview() {
             onCompressClick = {},
             onClearAiEdit = {},
             onWatermarkClick = {},
+            onGalleryClick = {},
             copyToClipboard = {}
         )
     }

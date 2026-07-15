@@ -5,6 +5,7 @@ A high-performance Android application for professional document scanning, AI-po
 ## Key Features
 
 - **Smart Document Scanning**: High-quality scanning with automatic edge detection, perspective correction, and multi-page support via Google ML Kit.
+- **Gallery Import Support**: Seamlessly import existing images or documents from your device's gallery to apply AI processing, watermarking, or conversion to PDF.
 - **Advanced Interactive Watermarking**:
     - **Precise Positioning**: Drag and drop watermark text to any position on the document.
     - **Full Control**: Adjust rotation (-180° to 180°), size (50% to 300%), and color (7 main professional colors).
@@ -24,8 +25,24 @@ A high-performance Android application for professional document scanning, AI-po
     - **Image Compression**: One-tap size reduction (approx. 60%) to save storage space.
 - **Document Management**: 
     - Full persistent history with file size tracking.
+    - **Advanced Organization**: Rename documents for better categorization.
+    - **Quick Preview**: Explicit preview actions alongside tap-to-view.
     - Native Android Print Framework support.
     - Secure file sharing via `FileProvider`.
+
+## Architecture
+
+The application is built using modern Android development patterns:
+
+- **State-Driven Architecture**: The project uses a single entry point (`MainActivity`) to host all screens. Navigation and UI state are managed using Jetpack Compose `remember` and `mutableStateOf` patterns, providing smooth transitions and unified resource management.
+- **Clean Separation**:
+    - **Logic Layer**: Data persistence and AI logic handled by Room Database and ML Kit/Gemini engines.
+    - **UI Layer**: Declarative screens built with Jetpack Compose components.
+    - **Reactive Updates**: Uses Coroutines and Flows for efficient background processing and UI updates.
+- **Production Ready Optimization**: 
+    - Custom R8/ProGuard configuration for ML Kit and Gemini AI to ensure stability in release builds.
+    - Optimized model downloading via manifest metadata for immediate OCR availability.
+    - Hardened null safety in camera and scanner activity results.
 
 ## Technologies Used
 
@@ -59,6 +76,7 @@ A high-performance Android application for professional document scanning, AI-po
 
 - `MainActivity.kt`: Main UI coordinator for scanning, history, and document interaction.
 - `service/ScannerTTSService.kt`: Handles background speech synthesis and OCR processing.
+- `ui/screens/`: Contains modular screen implementations (`HomeScreen`, `HistoryScreen`, `DocumentDetailsScreen`).
 - `data/`: Room database layer (`ScannedDocument.kt`, `DocumentDao.kt`, `AppDatabase.kt`).
 - `ui/theme/`: Material 3 design system implementation.
 

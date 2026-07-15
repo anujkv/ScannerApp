@@ -70,7 +70,7 @@ class ScannerTTSService : Service(), TextToSpeech.OnInitListener {
             isTtsInitialized = true
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
-                    updateNotification("Speaking page ${currentIndex + 1} of ${currentUris.size}")
+                    updateNotification(getString(R.string.speaking_page_status, currentIndex + 1, currentUris.size))
                     sendStatusBroadcast(true)
                 }
                 override fun onDone(utteranceId: String?) {
@@ -107,7 +107,7 @@ class ScannerTTSService : Service(), TextToSpeech.OnInitListener {
                     currentUris = uris
                     currentIndex = 0
                     isPaused = false
-                    startForeground(NOTIFICATION_ID, createNotification("Starting extraction..."))
+                    startForeground(NOTIFICATION_ID, createNotification(getString(R.string.extracting_text)))
                     processNextPage()
                 }
             }
@@ -115,7 +115,7 @@ class ScannerTTSService : Service(), TextToSpeech.OnInitListener {
                 isPaused = !isPaused
                 if (isPaused) {
                     tts?.stop()
-                    updateNotification("Speech Paused")
+                    updateNotification(getString(R.string.speech_paused_status))
                 } else {
                     processNextPage()
                 }
@@ -130,7 +130,7 @@ class ScannerTTSService : Service(), TextToSpeech.OnInitListener {
                 val text = intent.getStringExtra(EXTRA_TEXT)
                 if (text != null && text.isNotBlank()) {
                     isPaused = false
-                    startForeground(NOTIFICATION_ID, createNotification("Speaking extracted text..."))
+                    startForeground(NOTIFICATION_ID, createNotification(getString(R.string.speaking_extracted_text)))
                     tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "ScannerAppTTS")
                 }
             }
@@ -186,7 +186,7 @@ class ScannerTTSService : Service(), TextToSpeech.OnInitListener {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Scanner Speech Service",
+                getString(R.string.service_name),
                 NotificationManager.IMPORTANCE_LOW
             )
             val manager = getSystemService(NotificationManager::class.java)
@@ -212,12 +212,12 @@ class ScannerTTSService : Service(), TextToSpeech.OnInitListener {
         val stopPendingIntent = PendingIntent.getService(this, 2, stopIntent, PendingIntent.FLAG_IMMUTABLE)
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Scanner App Speaking")
+            .setContentTitle(getString(R.string.notification_title))
             .setContentText(content)
             .setSmallIcon(R.drawable.ic_speaker)
             .setContentIntent(pendingIntent)
-            .addAction(if (isPaused) R.drawable.ic_speaker else R.drawable.ic_stop, if (isPaused) "Resume" else "Pause", pausePendingIntent)
-            .addAction(R.drawable.ic_stop, "Stop", stopPendingIntent)
+            .addAction(if (isPaused) R.drawable.ic_speaker else R.drawable.ic_stop, if (isPaused) getString(R.string.resume_button) else getString(R.string.pause_button), pausePendingIntent)
+            .addAction(R.drawable.ic_stop, getString(R.string.stop_button), stopPendingIntent)
             .setOngoing(true)
             .build()
     }

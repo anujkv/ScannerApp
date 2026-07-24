@@ -7,7 +7,9 @@ import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.TextSnippet
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -39,9 +41,16 @@ fun DocumentDetailsScreen(
     isSpeaking: Boolean,
     isListening: Boolean,
     isAiProcessing: Boolean,
+    isGeminiProcessing: Boolean,
+    isOllamaProcessing: Boolean = false,
     isCompressing: Boolean,
     isWatermarking: Boolean,
+    isGeminiEnabled: Boolean = true,
+    isOllamaEnabled: Boolean = true,
+    isAiEditEnabled: Boolean = true,
     aiEditedText: String?,
+    originalText: String? = null,
+    detectedLanguage: String? = null,
     onAiEditedTextChange: (String) -> Unit,
     onShareImages: (List<Uri>) -> Unit,
     onSharePdf: (Uri) -> Unit,
@@ -50,6 +59,8 @@ fun DocumentDetailsScreen(
     onViewTextClick: (List<Uri>) -> Unit,
     onAiEditClick: (List<Uri>) -> Unit,
     onAiVisualScanClick: (List<Uri>) -> Unit,
+    onOllamaClick: (List<Uri>) -> Unit = {},
+    onTranslateClick: (List<Uri>) -> Unit,
     onCompressClick: (List<Uri>) -> Unit,
     onSaveClick: (String?) -> Unit,
     onClearAiEdit: () -> Unit,
@@ -124,26 +135,36 @@ fun DocumentDetailsScreen(
         item { Text(stringResource(R.string.actions_header), style = MaterialTheme.typography.labelLarge, color = colorResource(R.color.text_primary), fontWeight = FontWeight.Bold) }
 
         item {
-            AnimatedVisibility(
-                visible = scale <= 1.1f,
-                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut()
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ActionCard(modifier = Modifier.weight(1f), icon = Icons.Default.Image, title = stringResource(R.string.share_image_title), subtitle = stringResource(R.string.share_image_subtitle), onClick = { onShareImages(imageUris) })
-                        ActionCard(modifier = Modifier.weight(1f), icon = Icons.Default.PictureAsPdf, title = stringResource(R.string.share_pdf_title), subtitle = stringResource(R.string.share_pdf_subtitle), onClick = { pdfUri?.let { onSharePdf(it) } })
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ActionCard(modifier = Modifier.weight(1f), icon = Icons.AutoMirrored.Filled.VolumeUp, title = stringResource(R.string.tts_title), subtitle = stringResource(R.string.tts_subtitle), onClick = { onSpeakClick(imageUris) }, isLoading = isSpeaking)
-                        ActionCard(modifier = Modifier.weight(1f), icon = painterResource(id = R.drawable.watermark_scanner), title = stringResource(R.string.watermark_title), subtitle = stringResource(R.string.watermark_subtitle), onClick = onWatermarkClick, isLoading = isWatermarking)
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ActionCard(modifier = Modifier.weight(1f), icon = Icons.Default.Compress, title = stringResource(R.string.compress_title), subtitle = stringResource(R.string.compress_subtitle), onClick = { onCompressClick(imageUris) }, isLoading = isCompressing)
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ActionCard(modifier = Modifier.weight(1f), icon = Icons.Default.Image, title = stringResource(R.string.share_image_title), subtitle = stringResource(R.string.share_image_subtitle), onClick = { onShareImages(imageUris) })
+                    ActionCard(modifier = Modifier.weight(1f), icon = Icons.Default.PictureAsPdf, title = stringResource(R.string.share_pdf_title), subtitle = stringResource(R.string.share_pdf_subtitle), onClick = { pdfUri?.let { onSharePdf(it) } })
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ActionCard(modifier = Modifier.weight(1f), icon = Icons.AutoMirrored.Filled.VolumeUp, title = stringResource(R.string.tts_title), subtitle = stringResource(R.string.tts_subtitle), onClick = { onSpeakClick(imageUris) }, isLoading = isSpeaking)
+                    ActionCard(modifier = Modifier.weight(1f), icon = Icons.AutoMirrored.Filled.TextSnippet, title = stringResource(R.string.extracted_text_title), subtitle = stringResource(R.string.extract_text_subtitle), onClick = { onViewTextClick(imageUris) }, isLoading = isAiProcessing)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ActionCard(modifier = Modifier.weight(1f), icon = Icons.Default.Translate, title = stringResource(R.string.translate_title), subtitle = stringResource(R.string.translate_subtitle), onClick = { onTranslateClick(imageUris) })
+                    ActionCard(modifier = Modifier.weight(1f), icon = Icons.Default.Compress, title = stringResource(R.string.compress_title), subtitle = stringResource(R.string.compress_subtitle), onClick = { onCompressClick(imageUris) }, isLoading = isCompressing)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ActionCard(modifier = Modifier.weight(1f), icon = painterResource(id = R.drawable.watermark_scanner), title = stringResource(R.string.watermark_title), subtitle = stringResource(R.string.watermark_subtitle), onClick = onWatermarkClick, isLoading = isWatermarking)
+                    if (isAiEditEnabled) {
                         ActionCard(modifier = Modifier.weight(1f), icon = Icons.Default.AutoFixHigh, title = stringResource(R.string.ai_edit_title), subtitle = stringResource(R.string.ai_edit_subtitle), onClick = { onAiEditClick(imageUris) }, isLoading = isListening)
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ActionCard(modifier = Modifier.weight(1f), icon = painterResource(R.drawable.ic_launcher_foreground), title = stringResource(R.string.ai_visual_scan_title), subtitle = stringResource(R.string.ai_visual_scan_subtitle), onClick = { onAiVisualScanClick(imageUris) }, isLoading = isAiProcessing)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (isOllamaEnabled) {
+                        ActionCard(modifier = Modifier.weight(1f), icon = Icons.Default.SmartToy, title = stringResource(R.string.ollama_scan_title), subtitle = stringResource(R.string.ollama_scan_subtitle), onClick = { onOllamaClick(imageUris) }, isLoading = isOllamaProcessing)
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                    if (isGeminiEnabled) {
+                        ActionCard(modifier = Modifier.weight(1f), icon = Icons.Default.AutoAwesome, title = stringResource(R.string.ai_visual_scan_title), subtitle = stringResource(R.string.ai_visual_scan_subtitle), onClick = { onAiVisualScanClick(imageUris) }, isLoading = isGeminiProcessing)
+                    } else {
                         Spacer(modifier = Modifier.weight(1f))
                     }
                 }
@@ -159,19 +180,35 @@ fun DocumentDetailsScreen(
                     border = BorderStroke(1.dp, Color(0xFFE0E0E0))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(stringResource(R.string.extracted_text_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                            IconButton(onClick = { copyToClipboard(aiEditedText) }) {
-                                Icon(Icons.Filled.ContentCopy, contentDescription = stringResource(R.string.copy_button), modifier = Modifier.size(20.dp))
+                        if (originalText != null) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.source_lang_label), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                if (detectedLanguage != null) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Surface(color = Color(0xFFE8F0FE), shape = CircleShape) {
+                                        Text(text = detectedLanguage, style = MaterialTheme.typography.labelSmall, color = Color(0xFF1967D2), modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                                    }
+                                }
                             }
-                            IconButton(onClick = onClearAiEdit) {
-                                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.clear_button), modifier = Modifier.size(20.dp))
+                            Text(text = originalText, style = MaterialTheme.typography.bodySmall, color = Color.DarkGray, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFEEEEEE))
+                            Text(stringResource(R.string.target_lang_label), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                        } else {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.extracted_text_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                IconButton(onClick = { copyToClipboard(aiEditedText) }) {
+                                    Icon(Icons.Filled.ContentCopy, contentDescription = stringResource(R.string.copy_button), modifier = Modifier.size(20.dp))
+                                }
+                                IconButton(onClick = onClearAiEdit) {
+                                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.clear_button), modifier = Modifier.size(20.dp))
+                                }
                             }
                         }
+                        
                         TextField(
                             value = aiEditedText,
                             onValueChange = onAiEditedTextChange,
-                            modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 300.dp),
                             textStyle = MaterialTheme.typography.bodyMedium,
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
@@ -204,9 +241,16 @@ fun DocumentDetailsScreenPreview() {
             isSpeaking = false,
             isListening = false,
             isAiProcessing = false,
+            isGeminiProcessing = false,
+            isOllamaProcessing = false,
             isCompressing = false,
             isWatermarking = false,
+            isGeminiEnabled = true,
+            isOllamaEnabled = true,
+            isAiEditEnabled = true,
             aiEditedText = "Sample extracted text from the document.",
+            originalText = "Sample source text",
+            detectedLanguage = "English",
             onAiEditedTextChange = {},
             onShareImages = {},
             onSharePdf = {},
@@ -215,6 +259,8 @@ fun DocumentDetailsScreenPreview() {
             onViewTextClick = {},
             onAiEditClick = {},
             onAiVisualScanClick = {},
+            onOllamaClick = {},
+            onTranslateClick = {},
             onCompressClick = {},
             onSaveClick = {},
             onClearAiEdit = {},
@@ -223,4 +269,3 @@ fun DocumentDetailsScreenPreview() {
         )
     }
 }
-

@@ -71,6 +71,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.mlkit.scanner)
     implementation(libs.mlkit.text.recognition)
+    implementation(libs.mlkit.translate)
+    implementation(libs.mlkit.language.id)
     implementation(libs.coil.compose)
     implementation(libs.androidx.print)
     implementation(libs.androidx.material.icons.extended)
@@ -78,6 +80,26 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.google.ai.client)
+// To recognize Latin script
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+// To recognize Chinese script
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+// To recognize Devanagari script
+    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
+// To recognize Japanese script
+    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
+// To recognize Korean script
+    implementation("com.google.mlkit:text-recognition-korean:16.0.1")
+    // To recognize Latin script
+    implementation(libs.play.services.mlkit.text.recognition)
+// To recognize Chinese script
+    implementation(libs.play.services.mlkit.text.recognition.chinese)
+// To recognize Devanagari script
+    implementation(libs.play.services.mlkit.text.recognition.devanagari)
+// To recognize Japanese script
+    implementation(libs.play.services.mlkit.text.recognition.japanese)
+// To recognize Korean script
+    implementation(libs.play.services.mlkit.text.recognition.korean)
     ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

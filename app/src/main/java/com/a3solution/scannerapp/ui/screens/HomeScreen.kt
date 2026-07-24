@@ -8,7 +8,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material.icons.automirrored.filled.TextSnippet
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
@@ -40,9 +39,16 @@ fun HomeScreen(
     isSpeaking: Boolean,
     isListening: Boolean,
     isAiProcessing: Boolean,
+    isGeminiProcessing: Boolean,
+    isOllamaProcessing: Boolean = false,
     isCompressing: Boolean,
     isWatermarking: Boolean,
+    isGeminiEnabled: Boolean = true,
+    isOllamaEnabled: Boolean = true,
+    isAiEditEnabled: Boolean = true,
     aiEditedText: String?,
+    originalText: String? = null,
+    detectedLanguage: String? = null,
     onAiEditedTextChange: (String) -> Unit,
     onScanClick: () -> Unit,
     onSaveClick: () -> Unit,
@@ -53,10 +59,13 @@ fun HomeScreen(
     onViewTextClick: () -> Unit,
     onAiEditClick: () -> Unit,
     onAiVisualScanClick: () -> Unit,
+    onOllamaClick: () -> Unit = {},
+    onTranslateClick: (List<Uri>) -> Unit,
     onCompressClick: () -> Unit,
     onClearAiEdit: () -> Unit,
     onWatermarkClick: () -> Unit,
     onGalleryClick: () -> Unit,
+    onRemoveScan: () -> Unit,
     copyToClipboard: (String) -> Unit
 ) {
     var scale by remember { mutableFloatStateOf(1f) }
@@ -109,8 +118,19 @@ fun HomeScreen(
                             }
                         }
                     } else {
-                        LazyColumn(modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = scale, scaleY = scale, translationX = offset.x, translationY = offset.y).transformable(state = state)) {
-                            items(scannedUris) { uri -> AsyncImage(model = uri, contentDescription = null, modifier = Modifier.fillMaxWidth().height(400.dp).padding(8.dp), contentScale = ContentScale.Fit) }
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            LazyColumn(modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = scale, scaleY = scale, translationX = offset.x, translationY = offset.y).transformable(state = state)) {
+                                items(scannedUris) { uri -> AsyncImage(model = uri, contentDescription = null, modifier = Modifier.fillMaxWidth().height(400.dp).padding(8.dp), contentScale = ContentScale.Fit) }
+                            }
+                            Surface(
+                                onClick = onRemoveScan,
+                                modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+                                color = Color.White.copy(alpha = 0.9f),
+                                shape = CircleShape,
+                                shadowElevation = 4.dp
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.padding(6.dp).size(20.dp), tint = Color.DarkGray)
+                            }
                         }
                     }
                 }
@@ -132,16 +152,28 @@ fun HomeScreen(
                     ActionCard(modifier = Modifier.weight(1f), icon = Icons.AutoMirrored.Filled.TextSnippet, title = stringResource(R.string.extracted_text_title), subtitle = stringResource(R.string.extract_text_subtitle), onClick = onViewTextClick, isLoading = isAiProcessing)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ActionCard(modifier = Modifier.weight(1f), icon = Icons.AutoMirrored.Filled.CompareArrows, title = stringResource(R.string.compare_title), subtitle = stringResource(R.string.compare_subtitle), onClick = { /* TODO */ })
-                    ActionCard(modifier = Modifier.weight(1f), icon = painterResource(id = R.drawable.watermark_scanner), title = stringResource(R.string.watermark_title), subtitle = stringResource(R.string.watermark_subtitle), onClick = onWatermarkClick, isLoading = isWatermarking)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ActionCard(modifier = Modifier.weight(1f), icon = Icons.Default.AutoFixHigh, title = stringResource(R.string.ai_edit_title), subtitle = stringResource(R.string.ai_edit_subtitle), onClick = onAiEditClick, isLoading = isListening)
-                    ActionCard(modifier = Modifier.weight(1f), icon = painterResource(R.drawable.ic_launcher_foreground), title = stringResource(R.string.ai_visual_scan_title), subtitle = stringResource(R.string.ai_visual_scan_subtitle), onClick = onAiVisualScanClick, isLoading = isAiProcessing)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ActionCard(modifier = Modifier.weight(1f), icon = Icons.Default.Translate, title = stringResource(R.string.translate_title), subtitle = stringResource(R.string.translate_subtitle), onClick = { onTranslateClick(scannedUris) })
                     ActionCard(modifier = Modifier.weight(1f), icon = Icons.Default.Compress, title = stringResource(R.string.compress_title), subtitle = stringResource(R.string.compress_subtitle), onClick = onCompressClick, isLoading = isCompressing)
-                    Spacer(modifier = Modifier.weight(1f))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ActionCard(modifier = Modifier.weight(1f), icon = painterResource(id = R.drawable.watermark_scanner), title = stringResource(R.string.watermark_title), subtitle = stringResource(R.string.watermark_subtitle), onClick = onWatermarkClick, isLoading = isWatermarking)
+                    if (isAiEditEnabled) {
+                        ActionCard(modifier = Modifier.weight(1f), icon = Icons.Default.AutoFixHigh, title = stringResource(R.string.ai_edit_title), subtitle = stringResource(R.string.ai_edit_subtitle), onClick = onAiEditClick, isLoading = isListening)
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (isOllamaEnabled) {
+                        ActionCard(modifier = Modifier.weight(1f), icon = Icons.Default.SmartToy, title = stringResource(R.string.ollama_scan_title), subtitle = stringResource(R.string.ollama_scan_subtitle), onClick = onOllamaClick, isLoading = isOllamaProcessing)
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                    if (isGeminiEnabled) {
+                        ActionCard(modifier = Modifier.weight(1f), icon = Icons.Default.AutoAwesome, title = stringResource(R.string.ai_visual_scan_title), subtitle = stringResource(R.string.ai_visual_scan_subtitle), onClick = onAiVisualScanClick, isLoading = isGeminiProcessing)
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }
@@ -149,9 +181,25 @@ fun HomeScreen(
             item {
                 Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = MaterialTheme.shapes.large, border = BorderStroke(1.dp, Color(0xFFE0E0E0))) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.extracted_text_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)); Text(stringResource(R.string.ocr_result_hint), style = MaterialTheme.typography.labelSmall, color = Color.Gray) }
+                        if (originalText != null) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.source_lang_label), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                if (detectedLanguage != null) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Surface(color = Color(0xFFE8F0FE), shape = CircleShape) {
+                                        Text(text = detectedLanguage, style = MaterialTheme.typography.labelSmall, color = Color(0xFF1967D2), modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                                    }
+                                }
+                            }
+                            Text(text = originalText, style = MaterialTheme.typography.bodySmall, color = Color.DarkGray, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFEEEEEE))
+                            Text(stringResource(R.string.target_lang_label), style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                        } else {
+                            Row(verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.extracted_text_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)); Text(stringResource(R.string.ocr_result_hint), style = MaterialTheme.typography.labelSmall, color = Color.Gray) }
+                        }
+                        
                         Spacer(modifier = Modifier.height(12.dp))
-                        TextField(value = aiEditedText, onValueChange = onAiEditedTextChange, modifier = Modifier.fillMaxWidth().heightIn(min = 150.dp, max = 300.dp).background(Color(0xFFF8FAFB), shape = MaterialTheme.shapes.medium), textStyle = MaterialTheme.typography.bodyMedium, colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent))
+                        TextField(value = aiEditedText, onValueChange = onAiEditedTextChange, modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 300.dp).background(Color(0xFFF8FAFB), shape = MaterialTheme.shapes.medium), textStyle = MaterialTheme.typography.bodyMedium, colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent))
                         Spacer(modifier = Modifier.height(12.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = { 
@@ -178,9 +226,16 @@ fun HomeScreenPreview() {
             isSpeaking = false,
             isListening = false,
             isAiProcessing = false,
+            isGeminiProcessing = false,
+            isOllamaProcessing = false,
             isCompressing = false,
             isWatermarking = false,
+            isGeminiEnabled = true,
+            isOllamaEnabled = true,
+            isAiEditEnabled = true,
             aiEditedText = null,
+            originalText = null,
+            detectedLanguage = null,
             onAiEditedTextChange = {},
             onScanClick = {},
             onSaveClick = {},
@@ -191,12 +246,14 @@ fun HomeScreenPreview() {
             onViewTextClick = {},
             onAiEditClick = {},
             onAiVisualScanClick = {},
+            onOllamaClick = {},
+            onTranslateClick = {},
             onCompressClick = {},
             onClearAiEdit = {},
             onWatermarkClick = {},
             onGalleryClick = {},
+            onRemoveScan = {},
             copyToClipboard = {}
         )
     }
 }
-

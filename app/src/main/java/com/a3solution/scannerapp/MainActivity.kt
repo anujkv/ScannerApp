@@ -26,7 +26,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,7 +37,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.colorResource
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
@@ -64,6 +62,11 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.google.mlkit.nl.languageid.LanguageIdentification
+import com.google.mlkit.nl.translate.TranslateLanguage
+import com.google.mlkit.nl.translate.Translation
+import com.google.mlkit.nl.translate.TranslatorOptions
+import com.google.mlkit.common.model.DownloadConditions
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.tasks.await
@@ -71,6 +74,10 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.roundToInt
+import android.util.Base64
+import java.io.ByteArrayOutputStream
+import androidx.core.net.toUri
+import androidx.core.graphics.withRotation
 
 class MainActivity : ComponentActivity() {
     private val TAG = "ScannerApp_Main"
@@ -99,7 +106,7 @@ class MainActivity : ComponentActivity() {
 
     private fun getDocumentSize(doc: ScannedDocument): Long {
         var totalSize = 0L
-        val uris = doc.imageUris.split(",").filter { it.isNotEmpty() }.map { Uri.parse(it) }
+        val uris = doc.imageUris.split(",").filter { it.isNotEmpty() }.map { it.toUri() }
         for (uri in uris) {
             try {
                 if (uri.scheme == "file") {
@@ -161,20 +168,18 @@ class MainActivity : ComponentActivity() {
                             for (j in 0..5) {
                                 val x = i * stepX
                                 val y = j * stepY
-                                canvas.save()
-                                canvas.rotate(rotation, x, y)
-                                canvas.drawText(watermarkText, x, y, paint)
-                                canvas.restore()
+                                canvas.withRotation(rotation, x, y) {
+                                    drawText(watermarkText, x, y, paint)
+                                }
                             }
                         }
                     } else {
                         val x = mutableBitmap.width * normalizedPosition.x
                         val y = mutableBitmap.height * normalizedPosition.y
                         
-                        canvas.save()
-                        canvas.rotate(rotation, x, y)
-                        canvas.drawText(watermarkText, x, y, paint)
-                        canvas.restore()
+                        canvas.withRotation(rotation, x, y) {
+                            drawText(watermarkText, x, y, paint)
+                        }
                     }
 
                     val file = File(cacheDir, "watermarked_${System.currentTimeMillis()}_${watermarkedUris.size}.jpg")
@@ -234,6 +239,56 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private suspend fun persistUris(uris: List<Uri>): List<Uri> = withContext(Dispatchers.IO) {
+        val persistentUris = mutableListOf<Uri>()
+        val folder = File(filesDir, "scanned_docs")
+        if (!folder.exists()) folder.mkdirs()
+        for (uri in uris) {
+            try {
+                val extension = if (uri.toString().lowercase().endsWith(".pdf")) "pdf" else "jpg"
+                val file = File(folder, "doc_${System.currentTimeMillis()}_${UUID.randomUUID()}.$extension")
+                contentResolver.openInputStream(uri)?.use { input ->
+                    file.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                persistentUris.add(Uri.fromFile(file))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error persisting uri: $uri", e)
+            }
+        }
+        persistentUris
+    }
+
+    private suspend fun translateText(text: String, sourceLang: String?, targetLang: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val detectedSource = if (sourceLang == null || sourceLang == "auto") {
+                val languageIdentifier = LanguageIdentification.getClient()
+                val result = languageIdentifier.identifyLanguage(text).await()
+                if (result == "und") TranslateLanguage.ENGLISH else result
+            } else {
+                sourceLang
+            }
+
+            val options = TranslatorOptions.Builder()
+                .setSourceLanguage(detectedSource)
+                .setTargetLanguage(targetLang)
+                .build()
+            val translator = Translation.getClient(options)
+            
+            val conditions = DownloadConditions.Builder()
+                .build()
+            
+            translator.downloadModelIfNeeded(conditions).await()
+            val translatedText = translator.translate(text).await()
+            translator.close()
+            translatedText
+        } catch (e: Exception) {
+            Log.e(TAG, "Translation error", e)
+            null
+        }
+    }
+
     enum class Screen { HOME, HISTORY, DETAILS }
 
     override fun onNewIntent(intent: Intent) {
@@ -263,10 +318,23 @@ class MainActivity : ComponentActivity() {
                 var isSpeaking by remember { mutableStateOf(false) }
                 var isListening by remember { mutableStateOf(false) }
                 var isAiProcessing by remember { mutableStateOf(false) }
+                var isGeminiAiProcessing by remember { mutableStateOf(false) }
+                var isOllamaAiProcessing by remember { mutableStateOf(false) }
                 var isCompressing by remember { mutableStateOf(false) }
+                var isTranslating by remember { mutableStateOf(false) }
+
+                // Feature flags
+                val isGeminiEnabled = false
+                val isOllamaEnabled = false
+                val isAiEditEnabled = false
+
                 var isWatermarking by remember { mutableStateOf(false) }
                 var aiEditedText by remember { mutableStateOf<String?>(null) }
+                var originalTextForTranslation by remember { mutableStateOf<String?>(null) }
+                var detectedLanguageName by remember { mutableStateOf<String?>(null) }
                 var showWatermarkDialog by remember { mutableStateOf(false) }
+                var showTranslateDialog by remember { mutableStateOf(false) }
+                var translateUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
                 var watermarkInput by remember { mutableStateOf("") }
 
                 val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -469,7 +537,7 @@ class MainActivity : ComponentActivity() {
                     var selectedColor by remember { mutableStateOf(Color.Gray) }
                     var showColorPicker by remember { mutableStateOf(false) }
                     val mainColors = listOf(Color.Red, Color.Green, Color.Blue, Color.Yellow, Color.Cyan, Color.Magenta, Color.Gray)
-                    val previewUri = if (currentScreen == Screen.HOME) scannedUris.firstOrNull() else selectedDocument?.imageUris?.split(",")?.firstOrNull { it.isNotEmpty() }?.let { Uri.parse(it) }
+                    val previewUri = if (currentScreen == Screen.HOME) scannedUris.firstOrNull() else selectedDocument?.imageUris?.split(",")?.firstOrNull { it.isNotEmpty() }?.let { it.toUri() }
 
                     AlertDialog(
                         onDismissRequest = { showWatermarkDialog = false },
@@ -517,7 +585,7 @@ class MainActivity : ComponentActivity() {
                         confirmButton = {
                             TextButton(onClick = {
                                 if (watermarkInput.isNotBlank()) {
-                                    val urisToWatermark = if (currentScreen == Screen.HOME) scannedUris else selectedDocument?.imageUris?.split(",")?.filter { it.isNotEmpty() }?.map { Uri.parse(it) } ?: emptyList()
+                                    val urisToWatermark = if (currentScreen == Screen.HOME) scannedUris else selectedDocument?.imageUris?.split(",")?.filter { it.isNotEmpty() }?.map { it.toUri() } ?: emptyList()
                                     val centerX = containerSize.width / 2f + dragOffset.x; val centerY = containerSize.height / 2f + dragOffset.y
                                     val nx = if (containerSize.width > 0) centerX / containerSize.width else 0.5f; val ny = if (containerSize.height > 0) centerY / containerSize.height else 0.5f
                                     val colorInt = android.graphics.Color.argb(255, (selectedColor.red * 255).toInt(), (selectedColor.green * 255).toInt(), (selectedColor.blue * 255).toInt())
@@ -526,11 +594,23 @@ class MainActivity : ComponentActivity() {
                                         val newUris = applyWatermark(urisToWatermark, watermarkInput, Offset(nx, ny), rotation, isTiled, scaleFactor, colorInt)
                                         if (newUris.isNotEmpty()) {
                                             val newPdfUri = generatePdfFromImages(newUris)
-                                            if (currentScreen == Screen.HOME) { scannedUris = newUris; pdfUri = newPdfUri }
-                                            else {
+                                            if (currentScreen == Screen.HOME) { 
+                                                scannedUris = newUris
+                                                pdfUri = newPdfUri 
+                                            } else {
                                                 selectedDocument?.let { doc ->
-                                                    val newDoc = doc.copy(id = 0, name = "${doc.name} (Watermarked)", timestamp = System.currentTimeMillis(), imageUris = newUris.joinToString(",") { it.toString() }, pdfUri = newPdfUri?.toString())
-                                                    documentDao.insertDocument(newDoc); Toast.makeText(this@MainActivity, getString(R.string.new_watermarked_copy_toast), Toast.LENGTH_SHORT).show(); currentScreen = Screen.HISTORY
+                                                    val persistentImages = persistUris(newUris)
+                                                    val persistentPdf = newPdfUri?.let { persistUris(listOf(it)).firstOrNull() }
+                                                    val newDoc = doc.copy(
+                                                        id = 0, 
+                                                        name = "${doc.name} (Watermarked)", 
+                                                        timestamp = System.currentTimeMillis(), 
+                                                        imageUris = persistentImages.joinToString(",") { it.toString() }, 
+                                                        pdfUri = persistentPdf?.toString()
+                                                    )
+                                                    documentDao.insertDocument(newDoc)
+                                                    Toast.makeText(this@MainActivity, getString(R.string.new_watermarked_copy_toast), Toast.LENGTH_SHORT).show()
+                                                    currentScreen = Screen.HISTORY
                                                 }
                                             }
                                         }
@@ -540,6 +620,87 @@ class MainActivity : ComponentActivity() {
                             }) { Text(stringResource(R.string.apply_button)) }
                         },
                         dismissButton = { TextButton(onClick = { showWatermarkDialog = false }) { Text(stringResource(R.string.cancel_button)) } }
+                    )
+                }
+
+                if (showTranslateDialog) {
+                    var sourceLang by remember { mutableStateOf("auto") }
+                    var targetLang by remember { mutableStateOf(TranslateLanguage.ENGLISH) }
+                    val languages = listOf(
+                        "auto" to stringResource(R.string.lang_auto),
+                        TranslateLanguage.ENGLISH to stringResource(R.string.lang_english),
+                        TranslateLanguage.HINDI to stringResource(R.string.lang_hindi),
+                        TranslateLanguage.KOREAN to stringResource(R.string.lang_korean)
+                    )
+
+                    AlertDialog(
+                        onDismissRequest = { showTranslateDialog = false },
+                        title = { Text(stringResource(R.string.translate_button)) },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(stringResource(R.string.source_lang_label), style = MaterialTheme.typography.labelMedium)
+                                languages.filter { it.first != targetLang }.forEach { (code, label) ->
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { sourceLang = code }) {
+                                        RadioButton(selected = sourceLang == code, onClick = { sourceLang = code })
+                                        Text(label)
+                                    }
+                                }
+                                HorizontalDivider()
+                                Text(stringResource(R.string.target_lang_label), style = MaterialTheme.typography.labelMedium)
+                                languages.filter { it.first != "auto" }.forEach { (code, label) ->
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { targetLang = code }) {
+                                        RadioButton(selected = targetLang == code, onClick = { targetLang = code })
+                                        Text(label)
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                coroutineScope.launch {
+                                    showTranslateDialog = false
+                                    isTranslating = true
+                                    Toast.makeText(this@MainActivity, getString(R.string.extracting_text), Toast.LENGTH_SHORT).show()
+                                    
+                                    val fullText = StringBuilder()
+                                    try {
+                                        for (uri in translateUris) {
+                                            val image = InputImage.fromFilePath(this@MainActivity, uri)
+                                            val result = textRecognizer.process(image).await()
+                                            fullText.append(result.text).append("\n")
+                                        }
+                                        val extractedText = fullText.toString()
+                                        if (extractedText.isNotBlank()) {
+                                            originalTextForTranslation = extractedText
+                                            
+                                            Toast.makeText(this@MainActivity, getString(R.string.translating_text), Toast.LENGTH_SHORT).show()
+                                            val translated = translateText(extractedText, if (sourceLang == "auto") null else sourceLang, targetLang)
+                                            if (translated != null) {
+                                                aiEditedText = translated
+                                                
+                                                // Update language label based on what was selected or detected
+                                                detectedLanguageName = when(sourceLang) {
+                                                    TranslateLanguage.HINDI -> "Hindi"
+                                                    TranslateLanguage.KOREAN -> "Korean"
+                                                    TranslateLanguage.ENGLISH -> "English"
+                                                    else -> "Auto-detected"
+                                                }
+                                            } else {
+                                                Toast.makeText(this@MainActivity, getString(R.string.translation_failed), Toast.LENGTH_SHORT).show()
+                                            }
+                                        } else {
+                                            Toast.makeText(this@MainActivity, getString(R.string.no_text_found), Toast.LENGTH_SHORT).show()
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Translation workflow error", e)
+                                        Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    } finally {
+                                        isTranslating = false
+                                    }
+                                }
+                            }) { Text(stringResource(R.string.translate_button)) }
+                        },
+                        dismissButton = { TextButton(onClick = { showTranslateDialog = false }) { Text(stringResource(R.string.cancel_button)) } }
                     )
                 }
 
@@ -637,29 +798,107 @@ class MainActivity : ComponentActivity() {
                             isSpeaking = isSpeaking,
                             isListening = isListening,
                             isAiProcessing = isAiProcessing,
+                            isGeminiProcessing = isGeminiAiProcessing,
+                            isOllamaProcessing = isOllamaAiProcessing,
                             isCompressing = isCompressing,
                             isWatermarking = isWatermarking,
+                            isGeminiEnabled = isGeminiEnabled,
+                            isOllamaEnabled = isOllamaEnabled,
+                            isAiEditEnabled = isAiEditEnabled,
                             aiEditedText = aiEditedText,
+                            originalText = originalTextForTranslation,
+                            detectedLanguage = detectedLanguageName,
                             onAiEditedTextChange = { aiEditedText = it },
                             onScanClick = { scanner.getStartScanIntent(this@MainActivity).addOnSuccessListener { scannerLauncher.launch(IntentSenderRequest.Builder(it).build()) } },
                             onSaveClick = {
                                 coroutineScope.launch {
+                                    Toast.makeText(this@MainActivity, "Saving document...", Toast.LENGTH_SHORT).show()
+                                    val persistentImageUris = persistUris(scannedUris)
+                                    val persistentPdfUri = pdfUri?.let { persistUris(listOf(it)).firstOrNull() }
+                                    
                                     val formattedDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
-                                    val doc = ScannedDocument(name = getString(R.string.scan_name_format, formattedDate), timestamp = System.currentTimeMillis(), pdfUri = pdfUri?.toString(), imageUris = scannedUris.joinToString(",") { it.toString() })
-                                    documentDao.insertDocument(doc); scannedUris = emptyList(); pdfUri = null; Toast.makeText(this@MainActivity, getString(R.string.saved_to_history_toast), Toast.LENGTH_SHORT).show()
+                                    val doc = ScannedDocument(
+                                        name = getString(R.string.scan_name_format, formattedDate),
+                                        timestamp = System.currentTimeMillis(),
+                                        pdfUri = persistentPdfUri?.toString(),
+                                        imageUris = persistentImageUris.joinToString(",") { it.toString() }
+                                    )
+                                    documentDao.insertDocument(doc)
+                                    scannedUris = emptyList()
+                                    pdfUri = null
+                                    Toast.makeText(this@MainActivity, getString(R.string.saved_to_history_toast), Toast.LENGTH_SHORT).show()
                                 }
                             },
                             onShareImages = { shareImages(it) },
                             onSharePdf = { sharePdf(it) },
                             onPrintPdf = { printPdf(it) },
                             onSpeakClick = { if (isSpeaking) stopSpeechService() else startSpeechService(scannedUris) },
-                            onViewTextClick = { coroutineScope.launch { extractAndSpeak(scannedUris) { aiEditedText = it } } },
-                            onAiEditClick = { if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startVoiceCommand { cmd -> coroutineScope.launch { extractAndSpeak(scannedUris) { applyAiEdit(it, cmd) } } } else requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-                            onAiVisualScanClick = { coroutineScope.launch { isAiProcessing = true; val text = extractTextWithAi(scannedUris); if (text != null) aiEditedText = text else Toast.makeText(this@MainActivity, getString(R.string.ai_scan_failed), Toast.LENGTH_SHORT).show(); isAiProcessing = false } },
+                            onViewTextClick = { coroutineScope.launch { isAiProcessing = true; extractAndSpeak(scannedUris) { aiEditedText = it }; isAiProcessing = false } },
+                            onAiEditClick = { if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startVoiceCommand { cmd -> coroutineScope.launch { isAiProcessing = true; extractAndSpeak(scannedUris) { applyAiEdit(it, cmd) }; isAiProcessing = false } } else requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                            onAiVisualScanClick = { coroutineScope.launch { isGeminiAiProcessing = true; val text = extractTextWithAi(scannedUris); if (text != null) aiEditedText = text else Toast.makeText(this@MainActivity, getString(R.string.ai_scan_failed), Toast.LENGTH_SHORT).show(); isGeminiAiProcessing = false } },
+                            onOllamaClick = { Toast.makeText(this@MainActivity, "Ollama Scan clicked", Toast.LENGTH_SHORT).show() },
+                            onTranslateClick = { uris ->
+                                coroutineScope.launch {
+                                    // Clear old data first
+                                    aiEditedText = null
+                                    originalTextForTranslation = null
+                                    detectedLanguageName = null
+                                    
+                                    isTranslating = true
+                                    aiEditedText = "Extracting text..."
+                                    
+                                    val fullText = StringBuilder()
+                                    try {
+                                        for (uri in uris) {
+                                            val image = InputImage.fromFilePath(this@MainActivity, uri)
+                                            val result = textRecognizer.process(image).await()
+                                            fullText.append(result.text).append("\n")
+                                        }
+                                        val extractedText = fullText.toString()
+                                        if (extractedText.isNotBlank()) {
+                                            originalTextForTranslation = extractedText
+                                            aiEditedText = "Translating..."
+                                            
+                                            val languageIdentifier = LanguageIdentification.getClient()
+                                            val sourceLangCode = languageIdentifier.identifyLanguage(extractedText).await()
+                                            val targetLangCode = if (sourceLangCode == "en") TranslateLanguage.HINDI else TranslateLanguage.ENGLISH
+                                            
+                                            val translated = translateText(extractedText, if (sourceLangCode == "und") null else sourceLangCode, targetLangCode)
+                                            if (translated != null) {
+                                                aiEditedText = translated
+                                                detectedLanguageName = when(sourceLangCode) {
+                                                    "hi" -> "Hindi"
+                                                    "ko" -> "Korean"
+                                                    "en" -> "English"
+                                                    "und" -> "Auto-detected"
+                                                    else -> sourceLangCode.uppercase(Locale.getDefault())
+                                                }
+                                            } else {
+                                                aiEditedText = "Translation failed."
+                                            }
+                                        } else {
+                                            aiEditedText = null
+                                            Toast.makeText(this@MainActivity, getString(R.string.no_text_found), Toast.LENGTH_SHORT).show()
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Auto Translation error", e)
+                                        aiEditedText = "Error: ${e.message}"
+                                    } finally {
+                                        isTranslating = false
+                                    }
+                                }
+                            },
                             onCompressClick = { coroutineScope.launch { isCompressing = true; val newUris = compressImages(scannedUris); if (newUris.isNotEmpty()) scannedUris = newUris; isCompressing = false } },
-                            onClearAiEdit = { aiEditedText = null },
+                            onClearAiEdit = { aiEditedText = null; originalTextForTranslation = null; detectedLanguageName = null },
                             onWatermarkClick = { showWatermarkDialog = true },
                             onGalleryClick = { galleryLauncher.launch("image/*") },
+                            onRemoveScan = {
+                                scannedUris = emptyList()
+                                pdfUri = null
+                                aiEditedText = null
+                                originalTextForTranslation = null
+                                detectedLanguageName = null
+                            },
                             copyToClipboard = ::copyToClipboard
                         )
                         Screen.HISTORY -> {
@@ -686,20 +925,92 @@ class MainActivity : ComponentActivity() {
                                 isSpeaking = isSpeaking,
                                 isListening = isListening,
                                 isAiProcessing = isAiProcessing,
+                                isGeminiProcessing = isGeminiAiProcessing,
+                                isOllamaProcessing = isOllamaAiProcessing,
                                 isCompressing = isCompressing,
                                 isWatermarking = isWatermarking,
+                                isGeminiEnabled = isGeminiEnabled,
+                                isOllamaEnabled = isOllamaEnabled,
+                                isAiEditEnabled = isAiEditEnabled,
                                 aiEditedText = aiEditedText,
+                                originalText = originalTextForTranslation,
+                                detectedLanguage = detectedLanguageName,
                                 onAiEditedTextChange = { aiEditedText = it },
                                 onShareImages = { shareImages(it) },
                                 onSharePdf = { sharePdf(it) },
                                 onPrintPdf = { printPdf(it) },
                                 onSpeakClick = { uris -> if (isSpeaking) stopSpeechService() else startSpeechService(uris, doc.id) },
-                                onViewTextClick = { uris -> coroutineScope.launch { extractAndSpeak(uris) { aiEditedText = it } } },
-                                onAiEditClick = { uris -> if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startVoiceCommand { cmd -> coroutineScope.launch { extractAndSpeak(uris) { applyAiEdit(it, cmd) } } } else requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-                                onAiVisualScanClick = { uris -> coroutineScope.launch { isAiProcessing = true; val text = extractTextWithAi(uris); if (text != null) aiEditedText = text else Toast.makeText(this@MainActivity, getString(R.string.ai_scan_failed), Toast.LENGTH_SHORT).show(); isAiProcessing = false } },
-                                onCompressClick = { uris -> coroutineScope.launch { isCompressing = true; val newUris = compressImages(uris); if (newUris.isNotEmpty()) { val ud = doc.copy(imageUris = newUris.joinToString(",") { it.toString() }); documentDao.insertDocument(ud); selectedDocument = ud }; isCompressing = false } },
+                                onViewTextClick = { uris -> coroutineScope.launch { isAiProcessing = true; extractAndSpeak(uris) { aiEditedText = it }; isAiProcessing = false } },
+                                onAiEditClick = { uris -> if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startVoiceCommand { cmd -> coroutineScope.launch { isAiProcessing = true; extractAndSpeak(uris) { applyAiEdit(it, cmd) }; isAiProcessing = false } } else requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                                onAiVisualScanClick = { uris -> coroutineScope.launch { isGeminiAiProcessing = true; val text = extractTextWithAi(uris); if (text != null) aiEditedText = text else Toast.makeText(this@MainActivity, getString(R.string.ai_scan_failed), Toast.LENGTH_SHORT).show(); isGeminiAiProcessing = false } },
+                                onOllamaClick = { uris -> Toast.makeText(this@MainActivity, "Ollama Scan clicked", Toast.LENGTH_SHORT).show() },
+                                onTranslateClick = { uris ->
+                                    coroutineScope.launch {
+                                        // Clear old data first
+                                        aiEditedText = null
+                                        originalTextForTranslation = null
+                                        detectedLanguageName = null
+
+                                        isTranslating = true
+                                        aiEditedText = "Extracting text..." // Placeholder to open view
+                                        
+                                        val fullText = StringBuilder()
+                                        try {
+                                            for (uri in uris) {
+                                                val image = InputImage.fromFilePath(this@MainActivity, uri)
+                                                val result = textRecognizer.process(image).await()
+                                                fullText.append(result.text).append("\n")
+                                            }
+                                            val extractedText = fullText.toString()
+                                            if (extractedText.isNotBlank()) {
+                                                originalTextForTranslation = extractedText
+                                                aiEditedText = "Translating..."
+                                                
+                                                // Automatic logic: If source is likely English, translate to Hindi, else translate to English
+                                                val languageIdentifier = LanguageIdentification.getClient()
+                                                val sourceLangCode = languageIdentifier.identifyLanguage(extractedText).await()
+                                                val targetLangCode = if (sourceLangCode == "en") TranslateLanguage.HINDI else TranslateLanguage.ENGLISH
+                                                
+                                                val translated = translateText(extractedText, if (sourceLangCode == "und") null else sourceLangCode, targetLangCode)
+                                                if (translated != null) {
+                                                    aiEditedText = translated
+                                                    detectedLanguageName = when(sourceLangCode) {
+                                                        "hi" -> "Hindi"
+                                                        "ko" -> "Korean"
+                                                        "en" -> "English"
+                                                        "und" -> "Auto-detected"
+                                                        else -> sourceLangCode.uppercase(Locale.getDefault())
+                                                    }
+                                                } else {
+                                                    aiEditedText = "Translation failed. Tap to retry."
+                                                }
+                                            } else {
+                                                aiEditedText = null
+                                                Toast.makeText(this@MainActivity, getString(R.string.no_text_found), Toast.LENGTH_SHORT).show()
+                                            }
+                                        } catch (e: Exception) {
+                                            Log.e(TAG, "Auto Translation error", e)
+                                            aiEditedText = "Error: ${e.message}"
+                                        } finally {
+                                            isTranslating = false
+                                        }
+                                    }
+                                },
+                                onCompressClick = { uris ->
+                                    coroutineScope.launch {
+                                        isCompressing = true
+                                        val newCacheUris = compressImages(uris)
+                                        if (newCacheUris.isNotEmpty()) {
+                                            val persistentUris = persistUris(newCacheUris)
+                                            val ud = doc.copy(imageUris = persistentUris.joinToString(",") { it.toString() })
+                                            documentDao.insertDocument(ud)
+                                            selectedDocument = ud
+                                        }
+                                        isCompressing = false
+                                    }
+                                },
                                 onSaveClick = { Toast.makeText(this@MainActivity, getString(R.string.doc_already_in_history), Toast.LENGTH_SHORT).show() },
-                                onClearAiEdit = { aiEditedText = null },
+                                onClearAiEdit = { aiEditedText = null; originalTextForTranslation = null; detectedLanguageName = null },
                                 onWatermarkClick = { showWatermarkDialog = true },
                                 copyToClipboard = ::copyToClipboard
                             )

@@ -12,6 +12,11 @@ composeBom = "2026.02.01"
 room = "2.8.4"
 fragment = "1.8.6"
 appcompat = "1.7.0"
+playServicesMlkitTextRecognition = "19.0.1"
+playServicesMlkitTextRecognitionChinese = "16.0.1"
+playServicesMlkitTextRecognitionDevanagari = "16.0.1"
+playServicesMlkitTextRecognitionJapanese = "16.0.1"
+playServicesMlkitTextRecognitionKorean = "16.0.1"
 
 generativeai = "0.9.0"
 [libraries]
@@ -31,6 +36,13 @@ androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-te
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 mlkit-scanner = { group = "com.google.android.gms", name = "play-services-mlkit-document-scanner", version = "16.0.0" }
 mlkit-text-recognition = { group = "com.google.android.gms", name = "play-services-mlkit-text-recognition", version = "19.0.1" }
+mlkit-translate = { group = "com.google.mlkit", name = "translate", version = "17.0.3" }
+mlkit-language-id = { group = "com.google.mlkit", name = "language-id", version = "17.0.6" }
+play-services-mlkit-text-recognition = { module = "com.google.android.gms:play-services-mlkit-text-recognition", version.ref = "playServicesMlkitTextRecognition" }
+play-services-mlkit-text-recognition-chinese = { module = "com.google.android.gms:play-services-mlkit-text-recognition-chinese", version.ref = "playServicesMlkitTextRecognitionChinese" }
+play-services-mlkit-text-recognition-devanagari = { module = "com.google.android.gms:play-services-mlkit-text-recognition-devanagari", version.ref = "playServicesMlkitTextRecognitionDevanagari" }
+play-services-mlkit-text-recognition-japanese = { module = "com.google.android.gms:play-services-mlkit-text-recognition-japanese", version.ref = "playServicesMlkitTextRecognitionJapanese" }
+play-services-mlkit-text-recognition-korean = { module = "com.google.android.gms:play-services-mlkit-text-recognition-korean", version.ref = "playServicesMlkitTextRecognitionKorean" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version = "1.10.1" }
 google-ai-client = { group = "com.google.ai.client.generativeai", name = "generativeai", version.ref = "generativeai" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version = "2.7.0" }
